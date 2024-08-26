@@ -1,0 +1,7 @@
+
+main :: (args: Args) s32 {
+  MSG :: "Hello"
+  local := MSG
+  io.print(format("% World!", local))
+  return 0
+}
