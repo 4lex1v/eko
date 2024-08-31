@@ -53,6 +53,10 @@ CBUILD_EXPERIMENTAL_API void set_install_location (Project *project, const char 
 
 CBUILD_EXPERIMENTAL_API void install_target (Target *target) CBUILD_NO_EXCEPT;
 
+CBUILD_EXPERIMENTAL_API int run_system_command (Project *project, const char *command, char *output_buffer, size_t output_buffer_size, size_t *bytes_written) CBUILD_NO_EXCEPT;
+
+CBUILD_EXPERIMENTAL_API const char * find_executable (Project *project, const char *name) CBUILD_NO_EXCEPT;
+
 #ifdef __cplusplus
 }
 #endif
