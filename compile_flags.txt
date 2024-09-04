@@ -6,7 +6,7 @@
 -DTOOL_VERSION=0
 -DAPI_VERSION=0
 -I.
--I./libs/anyfin
+-IC:\Program Files (x86)\LLVM\include
 -Wno-alloca
 -Wno-unused-function
 -Wno-unused-parameter
