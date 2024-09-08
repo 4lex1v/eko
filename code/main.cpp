@@ -4,20 +4,33 @@
 #include <cstdint>
 
 #include <string>
-#include <print>
 #include <filesystem>
 #include <fstream>
+
+#include <llvm/IR/Module.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Type.h>
+#include <llvm/IR/Verifier.h>
+
+#include <llvm/Target/TargetOptions.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/TargetParser/Host.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/TargetSelect.h>
 
 using u8    = uint8_t;
 using u32   = uint32_t;
 using usize = size_t;
 
 struct Loaded_File {
+  std::string file_name;
+  std::string extension;
+
   const char *buffer;
   usize       buffer_size;
 };
 
-Loaded_File read_file_into_memory (const std::filesystem::path &file_path) {
+static Loaded_File read_file_into_memory (const std::filesystem::path &file_path) {
   std::ifstream file_handle { file_path, std::ios::binary | std::ios::ate };
   if (file_handle.is_open() == false) return {};
 
@@ -26,6 +39,9 @@ Loaded_File read_file_into_memory (const std::filesystem::path &file_path) {
   file_handle.seekg(std::ios::beg);
 
   Loaded_File file {
+    .file_name   = file_path.filename().string(),
+    .extension   = file_path.extension().string(),
+
     .buffer      = static_cast<char*>(calloc(file_size, sizeof(char))),
     .buffer_size = file_size
   };
@@ -62,6 +78,8 @@ struct Token {
     Use,
     And,
     Or,
+    False,
+    True,
 
     Newline,
     Numeric, // This should be refined into different types of literals supported, integers and floats at least
@@ -70,12 +88,12 @@ struct Token {
   };
 
   Kind kind = Undefined;
-  std::string_view value;
+  std::string value;
   u32 row = 0;
   u32 column = 0;
 
   bool operator == (Kind kind)                const { return this->kind  == kind; }
-  bool operator == (const std::string &value) const { return this->value == value; }
+  bool operator == (const std::string_view &value) const { return this->value == value; }
 };
 
 static bool operator == (const Token *token, Token::Kind kind) { return token->kind == kind; }
@@ -116,12 +134,12 @@ struct Tokenizer {
       TODO: It would be nice to get a better heuristic for how big the size of this vector should be.
             Perhaps it could be based on the size of the input file?
      */
-    tokens.resize(64);
+    tokens.reserve(64);
 
     while (true) {
       auto token   = read_token();
       auto is_last = token.kind == Token::Last;
-      tokens.push_back(std::move(token));
+      tokens.push_back(token);
 
       if (is_last) break;
     }
@@ -131,8 +149,8 @@ struct Tokenizer {
     Tokenizer Functions
   */
 
-  Token make_token (Token::Kind kind, std::string_view value = {}) const {
-    return Token(kind, value, row, column);
+  [[nodiscard]] Token make_token (Token::Kind kind, std::string value = {}) const {
+    return Token(kind, std::move(value), row, column);
   }
 
   /*
@@ -152,7 +170,7 @@ struct Tokenizer {
     return false;
   }
 
-  bool looking_at (u8 value) const { return *current == value; }
+  [[nodiscard]] bool looking_at (u8 value) const { return *current == value; }
 
   void skip_basic_whitespace () {
     while (*current == ' ' || *current == '\t') current += 1;
@@ -171,7 +189,7 @@ struct Tokenizer {
       break;
     }
 
-    auto value = std::string_view(value_start, current - value_start);
+    auto value = std::string(value_start, current - value_start);
     if (value == "return") return make_token(Token::Return);
     if (value == "struct") return make_token(Token::Struct);
     if (value == "use")    return make_token(Token::Use);
@@ -241,7 +259,8 @@ struct Tokenizer {
       so no additional advances are needed.
     */
 
-    return make_token(Token::String_Literal, std::string(value_start, current - value_start));
+    auto token_value = std::string(value_start, current - value_start);
+    return make_token(Token::String_Literal, token_value);
   }
 
   Token read_token () {
@@ -290,12 +309,19 @@ struct Tokenizer {
   }
 };
 
+
+
 /*
-  Parser
+  PARSER
 */
+
+#include <deque>
 
 struct Node;
 struct Type_Node;
+struct Type;
+
+static std::deque<Node *> checker_queue;
 
 struct Type_Node {
   enum Kind {
@@ -345,11 +371,10 @@ struct Plain_Type_Node: Type_Node {
 
   explicit Plain_Type_Node (Token name, std::vector<Type_Node *> params = {})
     : Type_Node(Plain),
-      type_name  { name },
+      type_name  { std::move(name) },
       parameters { std::move(params) }
   {}
 };
-
 
 struct Parameter_Node {
   Token      name;
@@ -370,9 +395,18 @@ struct Node {
     Literal,
 
     Function_Call,
+    Return
   };
 
   Kind kind = Undefined;
+};
+
+struct Root_Node: Node {
+  std::vector<Node *> decls;
+
+  Root_Node ()
+    : Node(Root)
+  {}
 };
 
 struct Literal_Node: Node {
@@ -380,7 +414,7 @@ struct Literal_Node: Node {
 
   explicit Literal_Node (Token _value)
     : Node(Literal),
-      value { _value }
+      value { std::move(_value) }
   {}
 };
 
@@ -396,15 +430,25 @@ struct Identifier_Node: Node {
   {}
 };
 
-struct Value_Decl_Node: Node {
-  Node *value_expression;
-  bool is_const;
+struct Value_Decl_Info {
+  const Type *value_type;
 
-  Value_Decl_Node (Node *expr = nullptr, bool _is_const = false)
+  bool is_const;
+};
+
+struct Value_Decl_Node: Node {
+  Token  name;
+  Node  *value_expression;
+
+  Value_Decl_Info info {};
+
+  explicit Value_Decl_Node (Token _name, Node *expr = nullptr, bool is_const = false)
     : Node(Decl_Value),
-      value_expression { expr },
-      is_const         { _is_const }
-  {}
+      name             { std::move(_name) },
+      value_expression { expr }
+  {
+    info.is_const = is_const;
+  }
 };
 
 struct Struct_Decl_Node: Node {
@@ -415,9 +459,11 @@ struct Struct_Decl_Node: Node {
 
   explicit Struct_Decl_Node (Token _name)
     : Node(Decl_Struct),
-      name { _name }
+      name { std::move(_name) }
   {}
 };
+
+struct Lambda_Decl_Node;
 
 struct Lambda_Decl_Node: Node {
   Token name;
@@ -428,7 +474,7 @@ struct Lambda_Decl_Node: Node {
 
   explicit Lambda_Decl_Node (Token _name)
     : Node(Decl_Lambda),
-      name { _name }
+      name { std::move(_name) }
   {}
 };
 
@@ -437,6 +483,15 @@ struct Function_Call_Node: Node {
   std::vector<Node *> args = {};
 
   Function_Call_Node (): Node(Function_Call) {}
+};
+
+struct Return_Node: Node {
+  Node *expr = nullptr;
+
+  explicit Return_Node(Node *_expr)
+    : Node(Return),
+      expr { _expr }
+  {}
 };
 
 struct Parser_Error {};
@@ -587,13 +642,7 @@ struct Parser {
   }
 
   Node * parse_unary_expression () {
-    if (looking_at(Token::String_Literal)) {
-      auto node = new Literal_Node(*current);
-      advance();
-      return node;
-    }
-
-    if (looking_at(Token::Numeric)) {
+    if (looking_at(Token::String_Literal) || looking_at(Token::Numeric)) {
       auto node = new Literal_Node(*current);
       advance();
       return node;
@@ -661,14 +710,21 @@ struct Parser {
 
     consume(Token::Colon);
 
-    if (looking_at(Token::Colon) || looking_at(Token::Equal)) {
-      advance();
-      return new Value_Decl_Node(parse_expression(), looking_at(Token::Colon));
+    if (!(looking_at(Token::Colon) || looking_at(Token::Equal))) {
+      // TODO: Parsing error
+        exit(1);
     }
+
+    const auto is_constant = looking_at(Token::Colon);
 
     advance();
 
     if (looking_at(Token::Open_Round_Bracket)) {
+        if (!is_constant) {
+            // TODO: Handle error, lambda value can't be used as a value, at least for now
+            exit(1);
+        }
+
       auto lambda_decl = new Lambda_Decl_Node(name_token);
       lambda_decl->params = parse_parameter_list();
 
@@ -711,23 +767,33 @@ struct Parser {
       return struct_decl;
     }
 
-    assert(false && "Must not be reachable");
+    auto declaration_value = parse_expression();
+    auto declaration_node = new Value_Decl_Node(name_token, declaration_value, is_constant);
 
-    return nullptr;
+    return declaration_node;
   }
 
   Node * parse_next () {
+    if (looking_at(Token::Return)) {
+      advance();
+
+      auto return_expr = parse_expression();
+
+      return new Return_Node(return_expr);
+    }
+
     if (looking_at(Token::Symbol)) {
       advance();
 
       if (looking_at(Token::Colon)) {
         advance();
 
-        if      (looking_at(Token::Colon)) advance();
-        else if (looking_at(Token::Equal)) advance();
-        else assert(false && "Unexpected token");
+        if (!(looking_at(Token::Colon) || looking_at(Token::Equal))) {
+          assert(false && "Unexpected token");
+          exit(1);
+        }
 
-        rewind(3);
+        rewind(2);
 
         return parse_declaration();
       }
@@ -742,47 +808,231 @@ struct Parser {
 
 };
 
-Node * build_tree(Parser &parser) {
-  while (!parser.looking_at(Token::Last))  {
+Root_Node build_tree (Parser &parser) {
+  Root_Node root;
+
+  while (true)  {
     if (parser.looking_at(Token::Use)) {
       assert(false && "Support for use statements");
       break;
     }
 
-    if (parser.looking_at(Token::Symbol))
-      return parser.parse_declaration();
+    if (parser.looking_at(Token::Symbol)) {
+      root.decls.push_back(parser.parse_declaration());
+      continue;
+    }
+
+    if (parser.looking_at(Token::Last)) break;
 
     assert(false && "Unsupported token");
   }
 
-  return {};
+  return root;
 }
 
-#include <llvm/IR/Module.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Type.h>
-#include <llvm/IR/Verifier.h>
+struct Binding;
 
-#include <llvm/TargetParser/Host.h>
-#include <llvm/MC/TargetRegistry.h>
+/*
+  TYPER
+ */
 
-int main (int argc, char **argv) {
+struct Type {
+  enum Kind {
+    Invalid,
+
+    Basic_Bool,
+    Basic_S32,
+    Basic_String,
+
+    Struct,
+    Pointer,
+  };
+
+  Kind kind = Invalid;
+
+  explicit constexpr Type (Kind k): kind { k } {}
+};
+
+struct Basic_Types: Type {
+  static constexpr auto bool_type   = Type(Basic_Bool);
+  static constexpr auto signed_32   = Type(Basic_S32);
+  static constexpr auto string_type = Type(Basic_String);
+};
+
+struct Struct_Type: Type {
+
+};
+
+struct Pointer_Type: Type {
+  Type *element_type;
+
+  explicit Pointer_Type (Type *_element_type = nullptr)
+    : Type (Pointer),
+      element_type { _element_type }
+  {}
+};
+
+// static const Type * get_expression_type (Node * node) {
+//   if (node->kind == Node::Literal) {
+//     auto lit_node = static_cast<Literal_Node *>(node);
+
+//     if (lit_node->value.kind == Token::False || lit_node->value.kind == Token::True) {
+//       return &Basic_Types::bool_type;
+//     }
+
+//     if (lit_node->value.kind == Token::String_Literal) {
+//       return &Basic_Types::string_type;
+//     }
+
+//   }
+
+//   assert(false && "Incomplete");
+
+//   return nullptr;
+// }
+
+struct Scope {
+  Scope *parent = nullptr;
+
+  std::unordered_map<std::string_view, Binding *> bindings;
+};
+
+struct Binding {
+  enum Kind {
+    Lambda,
+    Variable
+  };
+
+  Kind kind;
+  Token name;
+};
+
+struct Variable_Binding: Binding {
+  const Type *type;
+  
+  explicit Variable_Binding (Token name)
+    : Binding(Variable, std::move(name))
+  {}
+};
+
+struct Lambda_Binding: Binding {
+  std::vector<Binding *> params;
+  const Type *return_type;
+  Block *block;
+
+  explicit Lambda_Binding (Token name)
+    : Binding(Lambda, std::move(name))
+  {}
+};
+
+static std::vector<Binding> top_level_bindigns;
+
+static const Type * get_basic_type (const Token &name) {
+  if (name.value == "bool")   return &Basic_Types::bool_type;
+  if (name.value == "s32")    return &Basic_Types::signed_32;
+  if (name.value == "String") return &Basic_Types::string_type;
+
+  return nullptr;
+}
+
+static const Type * typecheck_type (Type_Node *type) {
+  switch (type->kind) {
+    case Type_Node::Pointer: {
+      auto pt = static_cast<Pointer_Type_Node *>(type);
+      return new Pointer_Type(nullptr);
+    }
+    case Type_Node::Plain: {
+      auto pt = static_cast<Plain_Type_Node *>(type);
+      if (pt->parameters.empty() == false) {
+        assert(false && "Unsupported");
+        return nullptr;
+      }
+
+      auto basic_type = get_basic_type(pt->type_name);
+      if (basic_type) return basic_type;
+
+      assert(false && "Unsupported");
+      
+      return nullptr;
+    }
+    default: {
+      assert(false && "Unsupported");
+      return nullptr;
+    }
+  }
+}
+
+static void add_binding_to_scope (Scope &scope, Binding *value) {
+  scope.bindings[value->name.value] = value;
+}
+
+static Binding * typecheck_lambda_binding (const Lambda_Decl_Node *lambda_decl) {
+  auto lambda = new Lambda_Binding(lambda_decl->name);
+
+  /*
+    Handle parameters
+   */
+  for (auto &param: lambda_decl->params) {
+    auto param_binding = new Variable_Binding(param.name);
+    param_binding->type = typecheck_type(param.type);
+
+    lambda->params.push_back(param_binding);
+  }
+  
+  lambda->return_type = typecheck_type(lambda_decl->return_type);
+
+  return lambda;
+}
+
+static std::vector<Binding *> process (Root_Node &root) {
+  std::vector<Binding *> result;
+  
+  for (auto decl: root.decls) {
+    if (decl->kind == Node::Decl_Lambda) {
+      auto lambda_decl = static_cast<Lambda_Decl_Node *>(decl);
+      result.push_back(typecheck_lambda_binding(lambda_decl));
+    }
+  }
+
+  return result;
+}
+
+static llvm::LLVMContext llvm_context {};
+
+static llvm::Type * to_llvm_type (const Type *type) {
+  switch (type->kind) {
+    case Type::Basic_Bool: return llvm::Type::getInt1Ty(llvm_context);
+    case Type::Basic_S32:  return llvm::Type::getInt32Ty(llvm_context);
+    default: {
+      assert(false && "Unsupported");
+      return nullptr;
+    }
+  }
+}
+
+int main (int, char **) {
   auto file_content = read_file_into_memory("samples/main.eko");
   if (file_content.buffer_size == 0) {
     printf("Couldn't read file's content into a local buffer.");
     return 1;
   }
 
-  auto tokenizer = Tokenizer { std::move(file_content) };
+  auto tokenizer = Tokenizer { file_content };
   auto parser    = Parser    { tokenizer };
 
   auto tree = build_tree(parser);
 
+  auto decls = process(tree);
+
   /*
     After building the tree we do all the type magic, inferring types and checking that all the code is legit.
    */
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmParser();
+  llvm::InitializeNativeTargetAsmPrinter();
 
   const auto target_triple = llvm::sys::getDefaultTargetTriple();
+  llvm::outs() << "Target triple: " << target_triple << "\n";
 
   std::string lookup_error;
   const auto target = llvm::TargetRegistry::lookupTarget(target_triple, lookup_error);
@@ -791,30 +1041,62 @@ int main (int argc, char **argv) {
     exit(1);
   }
 
-  auto target_machine = target->createTargetMachine(target_triple, "x86-64", "", {}, )
-
+  auto target_machine = target->createTargetMachine(target_triple, "x86-64", "", {}, {});
 
   /*
     Not sure what backend includes, something like optimizations and code generation I suppose?
    */
-  auto context = llvm::LLVMContext();
+  auto module = llvm::Module("eko", llvm_context);
+  module.setDataLayout(target_machine->createDataLayout());
+  module.setTargetTriple(target_triple);
 
-  auto module = llvm::Module("eko", context);
-  module.setTargetTriple(llvm::sys::getDefaultTargetTriple());
+  for (const Binding *decl : decls) {
+    if (decl->kind == Binding::Lambda) {
+      auto lambda = static_cast<const Lambda_Binding *>(decl);
 
-  auto void_type = llvm::Type::getVoidTy(context);
+      auto llvm_ret_type = to_llvm_type(lambda->return_type);
 
-  auto func_type = llvm::FunctionType::get(void_type, {}, false);
-  auto func      = llvm::Function::Create(func_type, llvm::GlobalValue::PrivateLinkage, "main", &module);
+      std::vector<llvm::Type *> param_types;
+      for (auto p: lambda->params) {
+        auto var = static_cast<const Variable_Binding *>(p);
+        assert(var->type);
 
-  auto entry_block = llvm::BasicBlock::Create(context, "entry", func);
+        param_types.push_back(to_llvm_type(var->type));
+      }
 
-  auto entry_block_builder = llvm::IRBuilder(entry_block);
+      auto function_type = llvm::FunctionType::get(llvm_ret_type, param_types, false);
 
-  if (verifyFunction(*func)) {
-    llvm::errs() << "Function verification failed\n";
-    exit(1);
+      auto lambda_func = llvm::Function::Create(function_type, llvm::GlobalValue::ExternalLinkage, lambda->name.value, &module);
+
+      auto entry_block         = llvm::BasicBlock::Create(llvm_context, "entry", lambda_func);
+      auto entry_block_builder = llvm::IRBuilder(entry_block);
+
+      
+    }
   }
+
+  // auto void_type = llvm::Type::getVoidTy(llvm_context);
+  //
+  // auto func_type = llvm::FunctionType::get(void_type, {}, false);
+  // auto func      = llvm::Function::Create(func_type, llvm::GlobalValue::PrivateLinkage, "main", &module);
+  //
+  // auto entry_block         = llvm::BasicBlock::Create(llvm_context, "entry", func);
+  // auto entry_block_builder = llvm::IRBuilder(entry_block);
+  // entry_block_builder.CreateRetVoid();
+
+  // std::string error_message;
+  // llvm::raw_string_ostream err_stream(error_message);
+  // if (verifyFunction(*func, &err_stream)) {
+  //   err_stream.flush();
+  //   llvm::errs() << "Function verification failed: " << error_message << "\n";
+  //   exit(1);
+  // }
+  //
+  // if (llvm::verifyModule(module, &err_stream)) {
+  //   err_stream.flush();
+  //   llvm::errs() << "Module verification failed: " << error_message << "\n";
+  //   exit(1);
+  // }
 
   module.print(llvm::outs(), nullptr);
 
