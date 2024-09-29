@@ -22,6 +22,8 @@ using u8    = uint8_t;
 using u32   = uint32_t;
 using usize = size_t;
 
+#define NOT_COMPLETE assert(false && "Incomplete")
+
 struct Loaded_File {
   std::string file_name;
   std::string extension;
@@ -430,25 +432,15 @@ struct Identifier_Node: Node {
   {}
 };
 
-struct Value_Decl_Info {
-  const Type *value_type;
-
-  bool is_const;
-};
-
 struct Value_Decl_Node: Node {
   Token  name;
   Node  *value_expression;
-
-  Value_Decl_Info info {};
 
   explicit Value_Decl_Node (Token _name, Node *expr = nullptr, bool is_const = false)
     : Node(Decl_Value),
       name             { std::move(_name) },
       value_expression { expr }
-  {
-    info.is_const = is_const;
-  }
+  {}
 };
 
 struct Struct_Decl_Node: Node {
@@ -897,18 +889,51 @@ struct Scope {
   std::unordered_map<std::string_view, Binding *> bindings;
 };
 
-struct Binding {
+struct Entry {
+  enum Kind {
+    Block,
+    Binding,
+    Expression,
+    Control,
+  };
+
+  Kind kind;
+};
+
+struct Block: Entry {
+  std::vector<Entry *> entries;
+
+  explicit Block ()
+    : Entry(Entry::Block)
+  {}
+};
+
+struct Expression: Entry {
+  explicit Expression ()
+    : Entry(Entry::Expression)
+  {}
+};
+
+struct Binding: Entry {
   enum Kind {
     Lambda,
-    Variable
+    Variable,
+    Constant
   };
 
   Kind kind;
   Token name;
+
+  explicit Binding (Kind _kind, Token _name)
+    : Entry(Entry::Binding),
+      kind { _kind },
+      name { std::move(_name) }
+  {}
 };
 
 struct Variable_Binding: Binding {
-  const Type *type;
+  const Type *type = nullptr;
+  ::Expression *expr = nullptr;
   
   explicit Variable_Binding (Token name)
     : Binding(Variable, std::move(name))
@@ -916,21 +941,18 @@ struct Variable_Binding: Binding {
 };
 
 struct Lambda_Binding: Binding {
-  std::vector<Binding *> params;
-  const Type *return_type;
-  Block *block;
+  std::vector<Binding *> params {};
+  const Type *return_type = nullptr;
+  ::Block *block          = nullptr;
 
   explicit Lambda_Binding (Token name)
     : Binding(Lambda, std::move(name))
   {}
 };
 
-static std::vector<Binding> top_level_bindigns;
-
 static const Type * get_basic_type (const Token &name) {
   if (name.value == "bool")   return &Basic_Types::bool_type;
   if (name.value == "s32")    return &Basic_Types::signed_32;
-  if (name.value == "String") return &Basic_Types::string_type;
 
   return nullptr;
 }
@@ -1004,10 +1026,15 @@ static llvm::Type * to_llvm_type (const Type *type) {
     case Type::Basic_Bool: return llvm::Type::getInt1Ty(llvm_context);
     case Type::Basic_S32:  return llvm::Type::getInt32Ty(llvm_context);
     default: {
-      assert(false && "Unsupported");
+      NOT_COMPLETE;
       return nullptr;
     }
   }
+}
+
+static llvm::Value * to_llvm_value (const Expression *expr) {
+  NOT_COMPLETE;
+  return nullptr;
 }
 
 int main (int, char **) {
@@ -1071,6 +1098,33 @@ int main (int, char **) {
       auto entry_block         = llvm::BasicBlock::Create(llvm_context, "entry", lambda_func);
       auto entry_block_builder = llvm::IRBuilder(entry_block);
 
+      for (auto entry: lambda->block->entries) {
+        if (entry->kind == Entry::Binding) {
+            switch (static_cast<Binding *>(entry)->kind) {
+                case Binding::Constant: {
+                    break;
+                }
+                case Binding::Variable: {
+                    auto var = static_cast<Variable_Binding *>(entry);
+
+                    assert(var->type);
+
+                    auto lv_var_type = to_llvm_type(var->type);
+
+                    llvm::Value *lv_init_value = nullptr;
+                    if (var->expr) lv_init_value = to_llvm_value(var->expr);
+
+                    auto var_slot = entry_block_builder.CreateAlloca(lv_var_type, lv_init_value, var->name.value);
+
+                    break;
+                }
+                default: {
+                    assert(false && "Unsupported");
+                    break;
+                }
+            }
+        }
+      }
       
     }
   }
