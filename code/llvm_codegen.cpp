@@ -8,6 +8,8 @@
 #include "ast.hpp"
 #include "codegen.hpp"
 
+namespace Eko {
+
 static LLVMContextRef llvm_context;
 static const char     *target_triple;
 
@@ -29,4 +31,6 @@ void codegen (const Root_Node &tree) {
   LLVMSetTarget(module, target_triple);
   
   LLVMContextDispose(llvm_context);
+}
+
 }

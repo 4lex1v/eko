@@ -9,6 +9,8 @@
 
 using namespace Fin;
 
+namespace Eko {
+
 using Panic_Handler = void (*)(u32);
 extern Panic_Handler panic_handler;
 
@@ -33,3 +35,5 @@ static T && unwrap (Sys_Result<T> &&result, Callsite callsite = {}) {
   if (result.is_ok()) [[likely]] return move(result.value);
   panic("% - ERROR: Call failed due to the error: %\n", callsite, result.error.value);
 }
+
+} 

@@ -3,9 +3,13 @@ Args :: struct {
   count: u32
 }
 
+log :: (msg: String) {
+  io.print(msg)
+}
+
 main :: (args: Args) s32 {
   MSG :: "Hello"
   local := MSG
-  io.print(format("% World!", local))
+  log(format("% World!", local))
   return 0
 }

@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include <intrin.h>
+
 #include "prelude.hpp"
 #include "allocator.hpp"
 
@@ -13,16 +15,20 @@ constexpr static inline usize seed = 0x517cc1b727220a95;
 static inline u64 compute_hash (const u64 value) {
   const u8 *bytes = reinterpret_cast<const u8 *>(&value);
 
+  auto rotate_right = [] <typename T> (T value, usize count) {
+    return (value >> count) | (value << ((sizeof(T) * 8) - count));
+  };
+
   size_t hash = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
   hash |= (size_t) (bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24)) << 16 << 16;
   hash ^= seed;
   hash = (~hash) + (hash << 21);
-  hash ^= rotate_right(hash,24);
+  hash ^= rotate_right(hash, 24);
   hash *= 265;
-  hash ^= rotate_right(hash,14);
+  hash ^= rotate_right(hash, 14);
   hash ^= seed;
   hash *= 21;
-  hash ^= rotate_right(hash,28);
+  hash ^= rotate_right(hash, 28);
   hash += (hash << 31);
   hash = (~hash) + (hash << 18);
 
@@ -157,7 +163,7 @@ struct Hash_Table {
       runtime_move_memory(slots + insert_position.offset, old_slots + index);
     }
 
-    if (old_capacity) heap->free(old_controls, tag);
+    if (old_capacity) free(this->allocator, old_controls);
   }
   
   void destroy () {
@@ -206,7 +212,7 @@ private:
     const usize controls_size   = capacity + 15;
     const usize allocation_size = controls_size + (capacity * sizeof(Slot));
 
-    u8 *memory = heap->alloc(allocation_size, tag);
+    u8 *memory = alloc(this->allocator, allocation_size);
 
     controls = reinterpret_cast<Control_Byte *>(memory);
     slots    = reinterpret_cast<Slot *>(memory + controls_size);

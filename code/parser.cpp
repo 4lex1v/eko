@@ -1,13 +1,17 @@
 
 #include "anyfin/arena.hpp"
 #include "anyfin/seq.hpp"
+#include "anyfin/result.hpp"
 
 #include "parser.hpp"
+#include "ast.hpp"
 #include "tokens.hpp"
 
 using namespace Fin;
 
-constexpr usize memory_reservation_per_process = megabytes(1);
+namespace Eko {
+
+static constexpr usize memory_reservation_per_process = megabytes(1);
 
 static bool operator == (const Token *token, Token_Kind kind) {
   return token->kind == kind;
@@ -41,6 +45,7 @@ struct Tokenizer {
 
   Array<Token> get_tokens (Memory_Arena &arena) {
     Array tokens { get_memory_at_current_offset<Token>(arena), 0 };
+
     while (true) {
       auto *token = new (arena) Token(read_token());
       tokens.count += 1;
@@ -224,13 +229,20 @@ struct Parser {
   Array<Token> tokens;
   const Token  *current = tokens.values;
 
-  Parser (const char *buffer)
-    : arena { reserve_virtual_memory(memory_reservation_per_process) }
-  {
-    tokens = Tokenizer(buffer).get_tokens(arena);
+  static Parser create (const char *buffer) {
+    Memory_Arena arena = Fin::reserve_virtual_memory(memory_reservation_per_process);
 
+    auto tokenizer = Tokenizer(buffer);
+    auto tokens    = tokenizer.get_tokens(arena);
+
+    // TODO: handle as error cases
     fin_ensure(tokens.count > 1);
     fin_ensure(tokens[tokens.count].kind == Token::Last);
+
+    return Parser {
+      .arena  = arena,
+      .tokens = tokens,
+    };
   }
 
   /*
@@ -291,13 +303,16 @@ struct Parser {
       current++;
   }
 
+  template <typename T> Node *      new_node      (T &&value) { return new (arena) Node(forward<T>(value)); }
+  template <typename T> Type_Node * new_type_node (T &&value) { return new (arena) Type_Node(forward<T>(value)); }
+
 #define parse_until(TOKEN)                                                     \
   while (!looking_at(TOKEN) && !looking_at(Token::Last))
 
-  Type_Node *parse_type () {
+  Type_Node * parse_type () {
     if (looking_at(Token::Star)) {
       advance();
-      return new (arena) Pointer_Type_Node(parse_type());
+      return new_type_node(Pointer_Type_Node(parse_type()));
     }
 
     if (looking_at(Token::Open_Square_Bracket)) {
@@ -305,18 +320,18 @@ struct Parser {
 
       if (looking_at(Token::Close_Square_Bracket)) {
         advance();
-        return new (arena) Seq_Type_Node(parse_type());
+        return new (arena) Type_Node(Seq_Type_Node(parse_type()));
       }
 
       auto bounds_argument = parse_expression();
       consume(Token::Close_Square_Bracket);
       auto elem_type = parse_type();
 
-      return new (arena) Array_Type_Node(bounds_argument, elem_type);
+      return new (arena) Type_Node(Array_Type_Node(bounds_argument, elem_type));
     }
 
     if (looking_at(Token::Symbol)) {
-      auto plain_type = new (arena) Plain_Type_Node(*current);
+      auto plain_type = Plain_Type_Node(*current);
       advance();
 
       if (looking_at(Token::Open_Round_Bracket)) {
@@ -332,7 +347,7 @@ struct Parser {
         advance();
       }
 
-      return plain_type;
+      return new (arena) Type_Node(move(plain_type));
     }
 
     fin_ensure(false && "Unexpected symbol in the type");
@@ -394,9 +409,9 @@ struct Parser {
 
   Node * parse_unary_expression () {
     if (looking_at(Token::String_Literal) || looking_at(Token::Numeric)) {
-      auto node = new (arena) Literal_Node(*current);
+      auto literal = Literal_Node(*current);
       advance();
-      return node;
+      return new_node(literal);
     }
 
     if (!looking_at(Token::Symbol)) {
@@ -406,18 +421,24 @@ struct Parser {
       return nullptr;
     }
 
-    List<Token> id_list { arena };
+    fin_ensure(looking_at(Token::Symbol));
 
-    list_push_copy(id_list, *current);
+    auto node = new_node(Identifier_Node(*current));
     advance();
 
     if (looking_at(Token::Period)) {
       advance();
+
       while (true) {
         skip_new_line_tokens();
+        // TODO: This should be a parser error 
         fin_ensure(current == Token::Symbol);
 
-        list_push_copy(id_list, *current);
+        node = new_node(Member_Access_Node {
+          .expr   = node,
+          .member = *current
+        });
+
         advance();
 
         if (looking_at(Token::Period)) {
@@ -429,19 +450,15 @@ struct Parser {
       }
     }
 
-    auto id_node = new (arena) Identifier_Node(move(id_list));
-
     if (looking_at(Token::Open_Round_Bracket)) {
       advance();
 
-      auto call_node = new (arena) Function_Call_Node;
-      call_node->expr = id_node;
-      call_node->args = parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, &Parser::parse_expression);
+      auto args = parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, &Parser::parse_expression);
 
-      return call_node;
+      return new_node(Function_Call_Node(node, move(args)));
     }
 
-    return id_node;
+    return node;
   }
 
   Node * parse_expression () {
@@ -470,33 +487,31 @@ struct Parser {
         return nullptr;
       }
 
-      auto lambda_decl = new (arena) Lambda_Decl_Node(name_token);
-      lambda_decl->params = parse_parameter_list();
+      auto lambda_params = parse_parameter_list();
 
+      Type_Node *return_type = nullptr;
       if (!looking_at(Token::Open_Curly_Bracket)) {
-        lambda_decl->return_type = parse_type();
+        return_type = parse_type();
       }
 
       fin_ensure(current == Token::Open_Curly_Bracket);
-      lambda_decl->body = parse_sequence_within(Token::Open_Curly_Bracket, Token::Close_Curly_Bracket, &Parser::parse_next);
+      auto lambda_body = parse_sequence_within(Token::Open_Curly_Bracket, Token::Close_Curly_Bracket, &Parser::parse_next);
 
-      return lambda_decl;
+      return new_node(Lambda_Decl_Node(name_token, move(lambda_params), return_type, move(lambda_body)));
     }
 
     if (looking_at(Token::Struct)) {
       advance();
 
-      auto struct_decl = new (arena) Struct_Decl_Node(name_token);
-      struct_decl->params = parse_parameter_list();
-      struct_decl->fields = parse_sequence_within(Token::Open_Curly_Bracket, Token::Close_Curly_Bracket, &Parser::parse_parameter);
-
-      return struct_decl;
+      return new_node(Struct_Decl_Node {
+        .params = parse_parameter_list(),
+        .fields = parse_sequence_within(Token::Open_Curly_Bracket, Token::Close_Curly_Bracket, &Parser::parse_parameter),
+      });
     }
 
     auto declaration_value = parse_expression();
-    auto declaration_node = new (arena) Value_Decl_Node(name_token, declaration_value, is_constant);
 
-    return declaration_node;
+    return new_node(Value_Decl_Node(name_token, declaration_value));
   }
 
   Node * parse_next () {
@@ -505,7 +520,7 @@ struct Parser {
 
       auto return_expr = parse_expression();
 
-      return new (arena) Return_Node(return_expr);
+      return new (arena) Node(Return_Node(return_expr));
     }
 
     if (looking_at(Token::Symbol)) {
@@ -535,7 +550,7 @@ struct Parser {
 };
 
 Root_Node build_tree (const char *buffer) {
-  Parser parser { buffer };
+  auto parser = Parser::create(buffer);
   
   Root_Node root;
 
@@ -558,3 +573,4 @@ Root_Node build_tree (const char *buffer) {
   return root;
 }
 
+}

@@ -3,164 +3,188 @@
 
 #include "anyfin/array.hpp"
 #include "anyfin/list.hpp"
+#include "anyfin/meta.hpp"
 
 #include "tokens.hpp"
 
-using namespace Fin;
+using Fin::Array;
+using Fin::List;
+using Fin::move;
 
-struct Node {
-  enum Node_Kind {
-    Undefined,
-    Root,
+namespace Eko {
 
-    Decl_Value,
-    Decl_Lambda,
-    Decl_Struct,
+struct Node;
+struct Type_Node;
 
-    Type,
-    Parameter,
-
-    Identifier,
-    Literal,
-
-    Function_Call,
-    Return
-  };
-
-  Node_Kind kind = Undefined;
-};
-
-struct Root_Node: Node {
+struct Root_Node {
   List<Node *> nodes;
 };
 
-struct Type_Node: Node {
-  enum Type_Node_Kind { Pointer, Array, Seq, Plain };
+enum struct Node_Kind {
+  Undefined,
 
-  Type_Node_Kind kind;
+  Identifier,
+  Literal,
+  Type,
 
-  Type_Node (Type_Node_Kind _kind):
-    Node(Type),
-    kind { _kind }
-  {}
+  Value_Decl,
+  Var_Decl,
+  Lambda_Decl,
+  Struct_Decl,
+
+  Parameter,
+  Member_Access,
+  Function_Call,
+  Return
 };
 
-struct Plain_Type_Node: Type_Node {
+enum struct Type_Node_Kind {
+   Pointer, Array, Seq, Plain 
+};
+
+struct Plain_Type_Node {
+  static const auto kind = Type_Node_Kind::Plain;
+
   Token type_name;
-  Fin::Array<Type_Node *> parameters;
-
-  Plain_Type_Node (Token name, Fin::Array<Type_Node *> params = {}):
-    Type_Node(Plain),
-    type_name  { Fin::move(name) },
-    parameters { params }
-  {}
+  List<Type_Node *> parameters;
 };
 
-struct Pointer_Type_Node: Type_Node {
+struct Pointer_Type_Node {
+  static const auto kind = Type_Node_Kind::Pointer;
+  
   Type_Node *value_type;
-
-  Pointer_Type_Node (Type_Node *_value_type = nullptr):
-    Type_Node(Pointer),
-    value_type { _value_type }
-  {}
 };
 
-struct Array_Type_Node: Type_Node {
+struct Array_Type_Node {
+  static const auto kind = Type_Node_Kind::Array;
+
   Node      *bounds_expression;
   Type_Node *elements_type;
-
-  Array_Type_Node (Node *expr = nullptr, Type_Node *_elements_type = nullptr):
-    Type_Node(Array),
-    bounds_expression { expr },
-    elements_type     { _elements_type }
-  {}
 };
 
-struct Seq_Type_Node: Type_Node {
+struct Seq_Type_Node {
+  static const auto kind = Type_Node_Kind::Seq;
+
   Type_Node *element_type;
-
-  Seq_Type_Node (Type_Node *_element_type = nullptr):
-    Type_Node(Seq),
-    element_type { _element_type }
-  {}
 };
 
-struct Parameter_Node: Node {
-  Token name;
-  Type_Node *type         = nullptr;
-  Node      *default_init = nullptr;
+struct Type_Node {
+  static const auto kind = Node_Kind::Type;
 
-  Parameter_Node ():
-    Node(Parameter)
-  {}
+  Type_Node_Kind type_kind;
+
+  union {
+    Plain_Type_Node   plain_type;
+    Pointer_Type_Node pointer_type;
+    Array_Type_Node   array_type;
+    Seq_Type_Node     seq_type;
+  };
+
+  template <typename T>
+  Type_Node (T value): type_kind { T::kind } {
+    new (&plain_type) T(move(value));
+  }
 };
 
-struct Literal_Node: Node {
-  Token value;
+struct Identifier_Node {
+  static const auto kind = Node_Kind::Identifier;
 
-  Literal_Node (Token _value):
-    Node(Literal),
-    value { move(_value) }
-  {}
+  Token identifier;
 };
 
-struct Identifier_Node: Node {
-  /*
-    Identifier expression could be however long, consisting of multiple parts
-   */
-  List<Token> identifier;
+struct Member_Access_Node {
+  static const auto kind = Node_Kind::Member_Access;
 
-  Identifier_Node (List<Token> ids = {}):
-    Node(Identifier),
-    identifier { move(ids) }
-  {}
-};
-
-struct Value_Decl_Node: Node {
-  Token name;
   Node *expr;
-
-  Value_Decl_Node (Token _name, Node *_expr = nullptr, bool is_const = false):
-    Node(Decl_Value),
-    name { move(_name) },
-    expr { _expr }
-  {}
+  Token member;
 };
 
-struct Struct_Decl_Node: Node {
+struct Literal_Node {
+  static const auto kind = Node_Kind::Literal;
+
+  Token value;
+};
+
+struct Parameter_Node {
+  static const auto kind = Node_Kind::Parameter;
+
+  Token      name;
+  Type_Node *type;
+  Node      *init_expr;
+};
+
+struct Value_Decl_Node {
+  static const auto kind = Node_Kind::Value_Decl;
+
+  Token  name;
+  Node  *expr;
+};
+
+struct Var_Decl_Node {
+  static const auto kind = Node_Kind::Var_Decl;
+
+  Token  name;
+  Node  *expr;
+};
+
+struct Struct_Decl_Node {
+  static const auto kind = Node_Kind::Struct_Decl;
+  
   Token name;
 
   List<Parameter_Node> params;
   List<Parameter_Node> fields;
-
-  Struct_Decl_Node (Token _name):
-    Node(Decl_Struct),
-    name { move(_name) }
-  {}
 };
 
-struct Lambda_Decl_Node: Node {
+struct Lambda_Decl_Node {
+  static const auto kind = Node_Kind::Lambda_Decl;
+
   Token name;
 
-  List<Parameter_Node> params;
-  Type_Node *return_type;
-  List<Node *> body;
-
-  Lambda_Decl_Node (Token _name):
-    Node(Decl_Lambda),
-    name { move(_name) }
-  {}
+  List<Parameter_Node>  params;
+  Type_Node            *return_type;
+  List<Node *>          body;
 };
 
-struct Function_Call_Node: Node {
-  Node *expr = nullptr;
-  List<Node *> args = {};
+struct Function_Call_Node {
+  static const auto kind = Node_Kind::Function_Call;
 
-  Function_Call_Node (): Node(Function_Call) {}
+  Node *expr;
+  List<Node *> args;
 };
 
-struct Return_Node: Node {
-  Node *expr = nullptr;
+struct Return_Node {
+  static const auto kind = Node_Kind::Return;
 
- Return_Node (Node *_expr): Node(Return), expr{_expr} {}
+  Node *expr;
 };
+
+struct Node {
+  using enum Node_Kind;
+
+  Node_Kind kind;
+
+  union {
+    Identifier_Node identifier;
+    Literal_Node    literal;
+    Type_Node       type;
+
+    Value_Decl_Node  value_decl;
+    Var_Decl_Node    var_decl;
+    Lambda_Decl_Node lambda_decl;
+    Struct_Decl_Node struct_decl;
+
+    Parameter_Node     parameter;
+    Member_Access_Node member;
+    Function_Call_Node func_call;
+    Return_Node        return_expr;
+  };
+
+  template <typename T>
+  Node (T value): kind { T::kind } {
+    new (&identifier) T(move(value));
+  }
+    
+};
+
+}

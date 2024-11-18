@@ -1,9 +1,23 @@
 
-struct Typer {
-  Type_Table types{};
-  std::vector<Binding *> bindings{};
+#include "anyfin/hash_table.hpp"
 
-  const Type *typecheck_type (const Type_Node *type) {
+#include "ast.hpp"
+
+using namespace Fin;
+
+namespace Eko {
+
+struct Type {
+  
+};
+
+struct Value_Binding {
+  
+};
+
+struct Typer {
+  const Type * typecheck_type (const Type_Node *type) {
+#if 0
     switch (type->kind) {
       case Type_Node::Pointer: {
         auto pt_node = static_cast<const Pointer_Type_Node *>(type);
@@ -22,8 +36,7 @@ struct Typer {
         }
 
         auto basic_type = get_basic_type(pt->type_name);
-        if (basic_type)
-          return basic_type;
+        if (basic_type) return basic_type;
 
         /*
           If we are looking at the plain type, which is not basic, we need to
@@ -37,7 +50,7 @@ struct Typer {
           To simplify the development at this point, there's no out of order
           declaration supported, so we need to check that this type is defined
           by now.
-         */
+        */
         if (auto result = this->types.find(pt->type_name.value);
             result != this->types.end()) {
           return result->second;
@@ -53,38 +66,74 @@ struct Typer {
         return nullptr;
       }
     }
+#endif
   }
 
-  std::vector<Binding *>
-  typecheck_parameters (const std::vector<Parameter_Node> &params) {
-    std::vector<Binding *> result{};
+  const Type * typecheck_expression (const Node *expr) {
+    
+  }
 
-    for (auto &param: params) {
-      auto param_binding = new Variable_Binding(param.name);
-      param_binding->type = typecheck_type(param.type);
+  void ensure_types_equal (const Type *type_a, const Type *type_b) {
+    if (type_a != type_b) fin_ensure(false && "Types are not equal");
+  }
 
-      result.push_back(param_binding);
+  void typecheck_parameter (const Parameter_Node &param) {
+    if (!param.type && !param.init_expr) {
+      // TODO: I need to do proper error handling at some point
+      fin_ensure(false && "Invalid parameter declaration");
+    }
+    
+    if (param.init_expr) {
+      auto expr_type = typecheck_expression(param.init_expr);
+
+      if (param.type) {
+        auto param_type = typecheck_type(param.type);
+        ensure_types_equal(param_type, expr_type);
+      }
     }
 
-    return result;
+    // auto binding = Value_Binding();
+    
+    // if (!param.type) {
+    //   if (!param.init_expr) {
+    //   }
+
+    //   typecheck_expression(param.init_expr);
+    // }
+
+    // typecheck_type(param.type);
   }
 
-  Binding *typecheck_lambda_binding (const Lambda_Decl_Node &lambda_decl) {
-    auto lambda = new Lambda_Binding(lambda_decl.name);
+  // std::vector<Binding *> typecheck_parameters (const List<Parameter_Node> &params) {
+  //   std::vector<Binding *> result{};
 
-    lambda->params = std::move(typecheck_parameters(lambda_decl.params));
-    lambda->return_type = typecheck_type(lambda_decl.return_type);
+  //   for (auto &param: params) {
+  //     auto param_binding = new Variable_Binding(param.name);
+  //     param_binding->type = typecheck_type(param.type);
 
-    for (auto &node: lambda_decl.body) {
-    }
+  //     result.push_back(param_binding);
+  //   }
 
-    return lambda;
-  }
+  //   return result;
+  // }
 
-  void process_node (const Node &node) {
-    switch (node.kind) {
-      case Node::Decl_Struct: {
-        auto struct_decl = static_cast<const Struct_Decl_Node &>(node);
+  // Binding * typecheck_lambda_binding (const Lambda_Decl_Node &lambda_decl) {
+  //   auto lambda = new Lambda_Binding(lambda_decl.name);
+
+  //   lambda->params = std::move(typecheck_parameters(lambda_decl.params));
+  //   lambda->return_type = typecheck_type(lambda_decl.return_type);
+
+  //   for (auto &node: lambda_decl.body) {
+  //   }
+
+  //   return lambda;
+  // }
+
+  void process (Root_Node &root) {
+    for (auto node: root.nodes) {
+      if (node->kind == Node::Struct_Decl) {
+#if 0
+        auto struct_decl = &node.struct_decl;
 
         if (!struct_decl.params.empty()) {
           // TODO: I guess this is where this monomorphisation would happen?
@@ -101,25 +150,11 @@ struct Typer {
 
         types[struct_decl.name.value] = struct_type;
 
-        break;
-      }
-
-      case Node::Decl_Lambda: {
-        auto lambda_decl = static_cast<const Lambda_Decl_Node &>(node);
-
-        this->bindings.push_back(typecheck_lambda_binding(lambda_decl));
-
-        break;
-      }
-
-      default: {
-        INCOMPLETE();
+        return;
+#endif
       }
     }
   }
-
-  void process (Root_Node &root) {
-    for (auto decl: root.decls)
-      process_node(*decl);
-  }
 };
+
+}

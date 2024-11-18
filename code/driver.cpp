@@ -8,9 +8,11 @@
 #include "parser.hpp"
 #include "typer.hpp"
 
+using namespace Eko;
+
 constexpr usize memory_reservation = megabytes(64);
 
-Panic_Handler panic_handler = terminate;
+Panic_Handler Eko::panic_handler = terminate;
 
 int mainCRTStartup () {
   auto arena = Memory_Arena { reserve_virtual_memory(memory_reservation) };
@@ -31,9 +33,6 @@ int mainCRTStartup () {
   file_buffer[file_size] = '\0';
   
   auto tree = build_tree(reinterpret_cast<const char *>(file_buffer));
-  typecheck(tree);
-  
-  codegen(tree);
 
   return 0;
 }
