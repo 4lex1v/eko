@@ -1,4 +1,8 @@
 
+Args :: struct {
+  count: u32
+}
+
 main :: (args: Args) s32 {
   MSG :: "Hello"
   local := MSG

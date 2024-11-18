@@ -48,7 +48,7 @@ static LLVM_Config llvm_config_libs (Project *p, const char *libs) {
   {
     auto command = std::string(llvm_config) + " --libdir";  
 
-    size_t size = 0;
+    unsigned size = 0;
     if (run_system_command(p, command.c_str(), buffer, buffer_size, &size)) {
       fprintf(stderr, "Couldn't execute 'llvm-config --libdir' due to an error: %s\n", buffer);
       exit(1);
@@ -62,7 +62,7 @@ static LLVM_Config llvm_config_libs (Project *p, const char *libs) {
   {
     auto command = std::string(llvm_config) + " --libnames " + libs;
 
-    size_t size = 0;
+    unsigned size = 0;
     if (run_system_command(p, command.c_str(), buffer, buffer_size, &size)) {
       fprintf(stderr, "Couldn't execute '%s' due to an error: %s\n", command.c_str(), buffer);
       exit(1);
@@ -84,7 +84,7 @@ static LLVM_Config llvm_config_libs (Project *p, const char *libs) {
   {
     auto command = std::string(llvm_config) + " --includedir";
 
-    size_t size = 0;
+    unsigned size = 0;
     if (run_system_command(p, command.c_str(), buffer, buffer_size, &size)) {
       fprintf(stderr, "Couldn't execute '%s' due to an error: %s\n", command.c_str(), buffer);
       exit(1);
@@ -100,20 +100,29 @@ static LLVM_Config llvm_config_libs (Project *p, const char *libs) {
 extern "C"
 #endif
 bool setup_project (const Arguments *args, Project *project) {
+  set_toolchain(project, Toolchain_Type_LLVM);
+
   auto llvm_config = llvm_config_libs(project, "core x86");
 
-  add_global_compiler_option(project, "-std:c++20 /EHa /MD /nologo /Z7 /Od");
-  add_global_linker_options(project, "/debug:full /nologo");
-  add_global_include_search_paths(project, llvm_config.include_path.c_str());
+  add_global_system_include_search_path(project, llvm_config.include_path.c_str());
 
-  auto target = add_executable(project, "main");
+  add_global_include_search_path(project, "libs");
+  add_global_compiler_option(project, "-std=c++2b");
+  add_global_linker_options(project, "/debug:full /nologo /subsystem:console");
+
+  auto target = add_executable(project, "eko");
   {
-    add_source_file(target, "code/main.cpp");
+
+    add_source_files(target,
+                     "code/driver.cpp",
+                     "code/parser.cpp",
+                     "code/typer.cpp",
+                     "code/llvm_codegen.cpp");
     add_compiler_option(target, "-DPLATFORM_WIN32");
     //add_compiler_options(target, "-O0 -g -gcodeview");
 
-    for (auto &lib: llvm_config.lib_paths) link_with(target, lib.c_str());
-    link_with(target, "psapi.lib shell32.lib ole32.lib uuid.lib advapi32.lib ws2_32.lib");
+    // for (auto &lib: llvm_config.lib_paths) link_with(target, lib.c_str());
+    link_with(target, "kernel32.lib");
   }
 
   return true;
