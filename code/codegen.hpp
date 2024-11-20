@@ -1,6 +1,10 @@
 
 #pragma once
 
-struct Root_Node;
+#include "ast.hpp"
 
-void codegen (const Root_Node &tree);
+namespace Eko {
+
+void codegen ();
+
+}

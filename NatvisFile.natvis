@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <Type Name="Fin::String">
+    <DisplayString>{value,[length]s}</DisplayString>
+  </Type>
+  
+  <Type Name="Fin::List&lt;*&gt;">
+    <Expand>
+      <LinkedListItems>
+        <HeadPointer>first</HeadPointer>
+        <NextPointer>next</NextPointer>
+        <ValueNode>this</ValueNode>
+      </LinkedListItems>
+    </Expand>
+  </Type>
+  
+  <Type Name="Fin::Array&lt;*&gt;">
+    <DisplayString> {{ size={count} }}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>count</Size>
+        <ValuePointer>values</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
+  <Type Name="Token">
+      
+      <DisplayString Condition="kind == Symbol">{kind,en} [ {value} ]</DisplayString>
+      <DisplayString Condition="kind != Symbol">{kind,en}</DisplayString>
+  </Type>
+
+</AutoVisualizer>

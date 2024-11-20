@@ -5,9 +5,9 @@
 
 namespace Fin {
 
-using Alloc_Func   = void * (*) (usize size, usize alignment);
-using Free_Func    = void (*) (void *);
-using Realloc_Func = void * (void *, usize new_size, usize new_alignment);
+using Alloc_Func   = void * (*) (void *, usize size, usize alignment);
+using Free_Func    = void (*) (void *, void *);
+using Realloc_Func = void * (*) (void *, void *, usize new_size, usize new_alignment);
 
 struct Allocator {
   Alloc_Func   alloc;
@@ -18,15 +18,15 @@ struct Allocator {
 };
 
 static inline void * alloc (Allocator &allocator, usize size, usize alignment = alignof(void *)) {
-  return allocator.alloc(size, alignment);  
+  return allocator.alloc(allocator.context, size, alignment);  
 }
 
 static inline void free (Allocator &allocator, void *value) {
-  allocator.free(value);
+  allocator.free(allocator.context, value);
 }
   
 static inline void * realloc (Allocator &allocator, void *value, usize new_size, usize new_alignment = alignof(void *)) {
-  return allocator.realloc(value, new_size, new_alignment);
+  return allocator.realloc(allocator.context, value, new_size, new_alignment);
 }
   
 }

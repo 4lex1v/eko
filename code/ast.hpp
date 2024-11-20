@@ -11,65 +11,127 @@ using Fin::Array;
 using Fin::List;
 using Fin::move;
 
-namespace Eko {
-
 struct Node;
-struct Type_Node;
-
-struct Root_Node {
-  List<Node *> nodes;
-};
 
 enum struct Node_Kind {
   Undefined,
 
-  Identifier,
-  Literal,
+  Expression,
   Type,
-
-  Value_Decl,
-  Var_Decl,
-  Lambda_Decl,
-  Struct_Decl,
-
-  Parameter,
-  Member_Access,
-  Function_Call,
-  Return
+  Declaration,
+  Statement
 };
+
+#define NODE_KIND(KIND) \
+  static const auto kind = Node_Kind::KIND;
+
+struct Expression_Node;
+
+enum struct Expression_Node_Kind {
+  Identifier,
+  Member_Access,
+  Literal,
+  Function_Call,
+  Binary_Expr
+};
+
+#define EXPR_KIND(KIND) \
+  static const auto kind = Expression_Node_Kind::KIND
+
+struct Literal_Node {
+  EXPR_KIND(Literal);
+
+  Token value;
+};
+
+struct Identifier_Node {
+  EXPR_KIND(Identifier);
+
+  Token identifier;
+};
+
+struct Member_Access_Node {
+  EXPR_KIND(Member_Access);
+
+  Expression_Node *expr;
+  Token member;
+};
+
+struct Function_Call_Node {
+  EXPR_KIND(Function_Call);
+
+  Expression_Node *expr;
+  List<Expression_Node> args;
+};
+
+struct Binary_Expr_Node {
+  EXPR_KIND(Binary_Expr);
+
+  Expression_Node *left;
+  Expression_Node *right;
+  // TODO: Operation type
+};
+
+struct Expression_Node {
+  using enum Expression_Node_Kind;
+  
+  Expression_Node_Kind expr_kind;
+  union {
+    Literal_Node       literal_expr;
+    Identifier_Node    identifier_expr;
+    Member_Access_Node member_access_expr;
+    Function_Call_Node function_call_expr;
+    Binary_Expr_Node   binary_expr;
+  };
+
+  template <typename T>
+  Expression_Node (T value):
+    expr_kind { T::kind }
+  {
+    new (&this->literal_expr) T(move(value));
+  }
+};
+
+struct Type_Node;
 
 enum struct Type_Node_Kind {
-   Pointer, Array, Seq, Plain 
+  Pointer,
+  Array,
+  Seq,
+  Plain 
 };
 
+#define TYPE_KIND(KIND) \
+  static const auto kind = Type_Node_Kind::KIND 
+
 struct Plain_Type_Node {
-  static const auto kind = Type_Node_Kind::Plain;
+  TYPE_KIND(Plain);
 
   Token type_name;
-  List<Type_Node *> parameters;
+  List<Type_Node> parameters;
 };
 
 struct Pointer_Type_Node {
-  static const auto kind = Type_Node_Kind::Pointer;
+  TYPE_KIND(Pointer);
   
   Type_Node *value_type;
 };
 
 struct Array_Type_Node {
-  static const auto kind = Type_Node_Kind::Array;
+  TYPE_KIND(Array);
 
-  Node      *bounds_expression;
-  Type_Node *elements_type;
+  Expression_Node  bounds;
+  Type_Node       *elements_type;
 };
 
 struct Seq_Type_Node {
-  static const auto kind = Type_Node_Kind::Seq;
+  TYPE_KIND(Seq);
 
   Type_Node *element_type;
 };
 
 struct Type_Node {
-  static const auto kind = Node_Kind::Type;
+  NODE_KIND(Type);
 
   Type_Node_Kind type_kind;
 
@@ -86,77 +148,97 @@ struct Type_Node {
   }
 };
 
-struct Identifier_Node {
-  static const auto kind = Node_Kind::Identifier;
+struct Declaration;
 
-  Token identifier;
+enum struct Declaration_Node_Kind {
+  Constant,
+  Variable,
+  Lambda,
+  Struct
 };
 
-struct Member_Access_Node {
-  static const auto kind = Node_Kind::Member_Access;
+#define DECL_KIND(KIND) \
+  static const auto kind = Declaration_Node_Kind::KIND;
 
-  Node *expr;
-  Token member;
+struct Constant_Node {
+  DECL_KIND(Constant);
+
+  Token name;
+
+  Expression_Node expr;
 };
 
-struct Literal_Node {
-  static const auto kind = Node_Kind::Literal;
+struct Variable_Node {
+  DECL_KIND(Variable);
 
-  Token value;
+  Token       name;
+
+  Type_Node       *type = nullptr;
+  Expression_Node *expr = nullptr;
 };
 
-struct Parameter_Node {
-  static const auto kind = Node_Kind::Parameter;
-
-  Token      name;
-  Type_Node *type;
-  Node      *init_expr;
-};
-
-struct Value_Decl_Node {
-  static const auto kind = Node_Kind::Value_Decl;
-
-  Token  name;
-  Node  *expr;
-};
-
-struct Var_Decl_Node {
-  static const auto kind = Node_Kind::Var_Decl;
-
-  Token  name;
-  Node  *expr;
-};
-
-struct Struct_Decl_Node {
-  static const auto kind = Node_Kind::Struct_Decl;
+struct Struct_Node {
+  DECL_KIND(Struct);
   
   Token name;
 
-  List<Parameter_Node> params;
-  List<Parameter_Node> fields;
+  List<Declaration> params;
+  List<Declaration> fields;
 };
 
-struct Lambda_Decl_Node {
-  static const auto kind = Node_Kind::Lambda_Decl;
+struct Lambda_Node {
+  DECL_KIND(Lambda);
 
   Token name;
 
-  List<Parameter_Node>  params;
-  Type_Node            *return_type;
-  List<Node *>          body;
+  List<Declaration> params;
+  Type_Node         return_type;
+  List<Node>        body;
 };
 
-struct Function_Call_Node {
-  static const auto kind = Node_Kind::Function_Call;
+struct Declaration_Node {
+  using enum Declaration_Node_Kind;
+  
+  NODE_KIND(Declaration);
 
-  Node *expr;
-  List<Node *> args;
+  Declaration_Node_Kind decl_kind;
+  union {
+    Constant_Node constant_decl;
+    Variable_Node variable_decl;
+    Struct_Node   struct_decl;
+    Lambda_Node   lambda_decl;
+  };
+  
+  template <typename T>
+  Declaration_Node (T value):
+    decl_kind { T::kind }
+  {
+    new (&this->constant_decl) T(move(value));
+  }
 };
+
+struct Statement_Node;
+
+enum struct Statement_Node_Kind {
+  Return
+};
+
+#define STMNT_KIND(KIND) \
+  static const auto kind = Statement_Node_Kind::KIND
 
 struct Return_Node {
-  static const auto kind = Node_Kind::Return;
+  STMNT_KIND(Return);
 
-  Node *expr;
+  Expression_Node value;
+};
+
+struct Statement_Node {
+  using enum Statement_Node_Kind;
+
+  Statement_Node_Kind stmnt_kind;
+  union {
+    Return_Node return_stmnt;
+  };
 };
 
 struct Node {
@@ -165,26 +247,17 @@ struct Node {
   Node_Kind kind;
 
   union {
-    Identifier_Node identifier;
-    Literal_Node    literal;
-    Type_Node       type;
-
-    Value_Decl_Node  value_decl;
-    Var_Decl_Node    var_decl;
-    Lambda_Decl_Node lambda_decl;
-    Struct_Decl_Node struct_decl;
-
-    Parameter_Node     parameter;
-    Member_Access_Node member;
-    Function_Call_Node func_call;
-    Return_Node        return_expr;
+    Expression_Node  expr_node;
+    Type_Node        type_node;
+    Declaration_Node decl_node;
+    Statement_Node   stmnt_node;
   };
 
   template <typename T>
-  Node (T value): kind { T::kind } {
-    new (&identifier) T(move(value));
+  Node (T value):
+    kind { T::kind }
+  {
+    new (&this->expr_node) T(move(value));
   }
-    
 };
 
-}

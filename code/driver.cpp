@@ -33,6 +33,9 @@ int mainCRTStartup () {
   file_buffer[file_size] = '\0';
   
   auto tree = build_tree(reinterpret_cast<const char *>(file_buffer));
+  // typecheck(tree);
+  
+  codegen();
 
   return 0;
 }

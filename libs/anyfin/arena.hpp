@@ -7,6 +7,7 @@
 #include "anyfin/memory.hpp"
 #include "anyfin/meta.hpp"
 #include "anyfin/prelude.hpp"
+#include "anyfin/allocator.hpp"
 
 namespace Fin {
 
@@ -33,6 +34,8 @@ struct Memory_Arena {
     other.memory = nullptr;
     other.size   = 0;
   }
+
+  operator Allocator ();
 };
 
 template <typename T = u8>
@@ -74,6 +77,27 @@ static Memory_Arena make_sub_arena (Memory_Arena &arena, const usize size, const
   return Memory_Arena(reservation, size);
 }
 
+static void * arena_alloc (void *context, usize size, usize alignment) {
+  auto arena = reinterpret_cast<Memory_Arena *>(context);
+  return reserve(*arena, size, alignment);
+}
+
+static void arena_free (void *context, void *) {}
+
+static void * arena_realloc (void *, void *, usize, usize) {
+  fin_ensure(false && "Operation not valid");
+  return nullptr;
+}
+
+inline Memory_Arena::operator Allocator () {
+  return Allocator {
+    .alloc = arena_alloc,
+    .free  = arena_free,
+    .realloc = arena_realloc,
+    .context = this
+  };
+}
+
 }
 
 inline void * operator new (usize size, Fin::Memory_Arena &arena) {
@@ -87,3 +111,4 @@ inline void * operator new[] (usize size, Fin::Memory_Arena &arena) {
 inline void * operator new (usize size, std::align_val_t alignment, Fin::Memory_Arena &arena) {
   return reserve(arena, size, static_cast<usize>(alignment));
 }
+

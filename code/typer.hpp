@@ -1,7 +1,6 @@
 
 #pragma once
 
-struct Root_Node;
+#include "ast.hpp"
 
-void typecheck (const Root_Node &tree);
-
+void typecheck (const List<Node *> &tree);

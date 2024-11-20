@@ -129,32 +129,33 @@ struct Typer {
   //   return lambda;
   // }
 
-  void process (Root_Node &root) {
-    for (auto node: root.nodes) {
-      if (node->kind == Node::Struct_Decl) {
+};
+
+void typecheck (const Root_Node &root) {
+  for (auto node: root.nodes) {
+    if (node->kind == Node::Struct_Decl) {
 #if 0
-        auto struct_decl = &node.struct_decl;
+      auto struct_decl = &node.struct_decl;
 
-        if (!struct_decl.params.empty()) {
-          // TODO: I guess this is where this monomorphisation would happen?
-          // Making a plain struct from a polimorphic one
-          INCOMPLETE();
-        }
-
-        /*
-          Step 1. Validate the struct declaration
-          Step 2. Register it
-        */
-        auto struct_type = new Struct_Type;
-        struct_type->fields = typecheck_parameters(struct_decl.fields);
-
-        types[struct_decl.name.value] = struct_type;
-
-        return;
-#endif
+      if (!struct_decl.params.empty()) {
+        // TODO: I guess this is where this monomorphisation would happen?
+        // Making a plain struct from a polimorphic one
+        INCOMPLETE();
       }
+
+      /*
+        Step 1. Validate the struct declaration
+        Step 2. Register it
+      */
+      auto struct_type = new Struct_Type;
+      struct_type->fields = typecheck_parameters(struct_decl.fields);
+
+      types[struct_decl.name.value] = struct_type;
+
+      return;
+#endif
     }
   }
-};
+}
 
 }

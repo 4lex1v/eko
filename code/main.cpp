@@ -61,23 +61,6 @@ struct Binding;
   TYPER
  */
 
-struct Type {
-  enum Kind {
-    Invalid,
-
-    Basic_Bool,
-    Basic_S32,
-    Basic_U32,
-    Basic_String,
-
-    Struct,
-    Pointer,
-  };
-
-  Kind kind = Invalid;
-
-  explicit constexpr Type(Kind k): kind{k} {}
-};
 
 using Type_Table = std::unordered_map<std::string, Type *>;
 
@@ -297,8 +280,6 @@ int main (int, char **) {
       auto entry_block =
           llvm::BasicBlock::Create(llvm_context, "entry", lambda_func);
       auto entry_block_builder = llvm::IRBuilder(entry_block);
-
-      
 
       for (auto entry: lambda->block.entries) {
         if (entry->kind == Entry::Binding) {

@@ -1,10 +1,10 @@
 
 #pragma once
 
+#include "anyfin/arena.hpp"
+
 #include "ast.hpp"
 
-namespace Eko {
+using Fin::Memory_Arena;
 
-Root_Node build_tree (const char *buffer);
-
-}
+List<Node *> build_tree (Memory_Arena &arena, const char *buffer);

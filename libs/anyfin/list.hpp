@@ -2,7 +2,7 @@
 #pragma once
 
 #include "anyfin/base.hpp"
-#include "anyfin/arena.hpp"
+#include "anyfin/allocator.hpp"
 
 namespace Fin {
 
@@ -15,13 +15,9 @@ struct List {
     Node *next = nullptr;
 
     fin_forceinline
-    constexpr Node (Value_Type &&_value)
-      : value { move(_value) } {}
-
-    fin_forceinline
-    void * operator new (usize size, Memory_Arena &arena) {
-      return reserve<Node>(arena);
-    }
+    constexpr Node (Value_Type &&_value):
+      value { move(_value) }
+    {}
   };
 
   struct Iterator {
@@ -45,56 +41,13 @@ struct List {
     constexpr Value_Type & operator * () { return node->value; }
   };
 
-  Memory_Arena *arena;
-
   Node  *first = nullptr;
   Node  *last  = nullptr;
 
   usize count = 0;
-
-  fin_forceinline constexpr List () = default;
-  fin_forceinline constexpr List (Memory_Arena &_arena)
-    : arena { &_arena } {}
-
-  fin_forceinline constexpr List (Memory_Arena &_arena, const List<T> &other)
-    : arena { &_arena }, first { other.first }, last { other.last } {}
-
-  /*
-    Because of the arena's pointer we can't simply copy this list, otherwise we may
-    end up overwriting data within the arena, e.g we create a list using arena A,
-    arena A is copied into a local copy B, attempting to make any changes to the list
-    would cause memory coruption in arena B.
-   */
-  constexpr List (const List<T> &other) = delete;
-
-  fin_forceinline
-  constexpr List (List<T> &&other) noexcept:
-    arena { other.arena },
-    first { other.first },
-    last  { other.last }
-  {
-    other.arena = nullptr;
-    other.first = nullptr;
-    other.last  = nullptr;
-  }
-
-  fin_forceinline
-  constexpr List<T>& operator = (List<T> &&other) noexcept {
-    if (this == &other) return *this;
-
-    arena = other.arena;
-    first = other.first;
-    last = other.last;
-
-    other.arena = nullptr;
-    other.first = nullptr;
-    other.last = nullptr;
-
-    return *this;
-  }
   
   fin_forceinline constexpr Iterator begin (this const auto &self) { return Iterator(self.first); } 
-  fin_forceinline constexpr Iterator end   (this const auto &self) { return Iterator(nullptr); }
+  fin_forceinline constexpr Iterator end   (this const auto &)     { return Iterator(nullptr); }
 
   fin_forceinline
   constexpr void for_each (const Invocable<void, T &> auto &func) const {
@@ -149,10 +102,10 @@ template <typename T>
 using List_Value = typename List<T>::Value_Type;
 
 template <typename T>
-static T & list_push (List<T> &list, List_Value<T> &&value) {
+static T & list_push (Allocator allocator, List<T> &list, List_Value<T> &&value) {
   using Node_Type = typename List<T>::Node;
 
-  auto node = new (*list.arena) Node_Type(move(value));
+  auto node = new (allocator) Node_Type(move(value));
 
   if (list.first == nullptr) {
     fin_ensure(list.last == nullptr);
@@ -170,15 +123,15 @@ static T & list_push (List<T> &list, List_Value<T> &&value) {
 }
 
 template <typename T>
-static T & list_push_copy (List<T> &list, List_Value<T> value) {
-  return list_push(list, move(value));
+static T & list_push_copy (Allocator allocator, List<T> &list, List_Value<T> value) {
+  return list_push(allocator, list, move(value));
 }
 
 template <typename T>
-static T & list_push_front(List<T> &list, List_Value<T> &&value) {
+static T & list_push_front(Allocator allocator, List<T> &list, List_Value<T> &&value) {
   using Node_Type = typename List<T>::Node;
 
-  auto node = new (*list.arena) Node_Type(move(value));
+  auto node = new (allocator) Node_Type(move(value));
 
   if (list.first == nullptr) {
     fin_ensure(list.last == nullptr);
@@ -196,8 +149,8 @@ static T & list_push_front(List<T> &list, List_Value<T> &&value) {
 }
 
 template <typename T>
-static T & list_push_front_copy (List<T> &list, List_Value<T> value) {
-  return list_push_front(list, move(value));
+static T & list_push_front_copy (Allocator allocator, List<T> &list, List_Value<T> value) {
+  return list_push_front(allocator, list, move(value));
 }
 
 template <typename T>

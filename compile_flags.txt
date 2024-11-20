@@ -7,6 +7,7 @@
 -DAPI_VERSION=0
 -I.
 -I./libs
+-I./code
 -IC:\Program Files (x86)\LLVM\include
 -Wno-alloca
 -Wno-unused-function
