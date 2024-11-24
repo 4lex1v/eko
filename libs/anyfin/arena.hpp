@@ -16,6 +16,7 @@ struct Memory_Arena {
   usize size   = 0;
   usize offset = 0;
 
+  constexpr Memory_Arena () = default;
   constexpr Memory_Arena (u8 *_memory, const usize _size)
     : memory { _memory },
       size   { _size }
@@ -23,6 +24,8 @@ struct Memory_Arena {
     fin_ensure(_memory);
     fin_ensure(size > sizeof(void*));
   }
+
+  Memory_Arena (const Memory_Arena &other) = delete;
 
   template <usize N>
   constexpr Memory_Arena (Byte_Array<N> auto (&array)[N])
@@ -75,6 +78,12 @@ static Memory_Arena make_sub_arena (Memory_Arena &arena, const usize size, const
   fin_ensure(reservation != nullptr);
 
   return Memory_Arena(reservation, size);
+}
+
+static void copy_arena (Memory_Arena &new_arena, Memory_Arena &original) {
+  new_arena.memory = original.memory;
+  new_arena.size   = original.size;
+  new_arena.offset = original.offset;
 }
 
 static void * arena_alloc (void *context, usize size, usize alignment) {

@@ -118,7 +118,8 @@ static Sys_Result<void> delete_resource (File_Path path, Resource_Type resource_
           defer { FindClose(search_handle); };
 
           while (true) {
-            auto scoped_arena = arena;
+            Memory_Arena scoped_arena;
+            copy_arena(scoped_arena, arena);
 
             auto file_name = String(cast_bytes(data.cFileName));
             if ((file_name != "." && file_name != "..")) {
@@ -239,7 +240,8 @@ static Sys_Result<void> for_each_file (File_Path directory, String extension, bo
     defer { FindClose(search_handle); };
 
     do {
-      auto local = arena;
+      Memory_Arena local;
+      copy_arena(local, arena);
       
       const auto file_name = String(cast_bytes(data.cFileName));
       if (file_name == "." || file_name == "..") continue;
@@ -367,7 +369,8 @@ static Sys_Result<void> copy_directory (File_Path from, File_Path to) {
     defer { FindClose(search_handle); };
 
     while (true) {
-      auto scoped_arena = arena;
+      Memory_Arena scoped_arena;
+      copy_arena(scoped_arena, arena);
 
       auto file_name = String(cast_bytes(find_file_data.cFileName));
       if (file_name != "." && file_name != "..") {

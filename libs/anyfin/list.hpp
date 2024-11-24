@@ -102,7 +102,7 @@ template <typename T>
 using List_Value = typename List<T>::Value_Type;
 
 template <typename T, typename Allocator>
-static T & list_push (Allocator allocator, List<T> &list, List_Value<T> &&value) {
+static T & list_push (Allocator &allocator, List<T> &list, List_Value<T> &&value) {
   using Node_Type = typename List<T>::Node;
 
   auto node = new (allocator) Node_Type(move(value));
@@ -123,12 +123,12 @@ static T & list_push (Allocator allocator, List<T> &list, List_Value<T> &&value)
 }
 
 template <typename T, typename Allocator>
-static T & list_push_copy (Allocator allocator, List<T> &list, List_Value<T> value) {
+static T & list_push_copy (Allocator &allocator, List<T> &list, List_Value<T> value) {
   return list_push(allocator, list, move(value));
 }
 
 template <typename T, typename Allocator>
-static T & list_push_front(Allocator allocator, List<T> &list, List_Value<T> &&value) {
+static T & list_push_front(Allocator &allocator, List<T> &list, List_Value<T> &&value) {
   using Node_Type = typename List<T>::Node;
 
   auto node = new (allocator) Node_Type(move(value));
@@ -149,7 +149,7 @@ static T & list_push_front(Allocator allocator, List<T> &list, List_Value<T> &&v
 }
 
 template <typename T, typename Allocator>
-static T & list_push_front_copy (Allocator allocator, List<T> &list, List_Value<T> value) {
+static T & list_push_front_copy (Allocator &allocator, List<T> &list, List_Value<T> value) {
   return list_push_front(allocator, list, move(value));
 }
 

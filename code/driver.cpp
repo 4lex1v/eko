@@ -42,7 +42,7 @@ static T && unwrap (Fin::Sys_Result<T> &&result, Fin::Callsite callsite = {}) {
   panic("% - ERROR: Call failed due to the error: %\n", callsite, result.error.take());
 }
 
-static Source_File create (Memory_Arena arena, const Module_Context *context, const char *file_path) {
+static Source_File create (Memory_Arena &arena, const Module_Context *context, const char *file_path) {
   auto sample_file = unwrap(Fin::open_file(file_path));
   auto file_size   = unwrap(get_file_size(sample_file));
   if (file_size == 0) {

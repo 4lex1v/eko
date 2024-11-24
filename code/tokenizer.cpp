@@ -3,6 +3,7 @@
 #include "anyfin/result.hpp"
 
 #include "tokenizer.hpp"
+#include "utils.hpp"
 
 static bool is_whitespace (char value) {
   return value == ' ' || value == '\t' || value == '\r' || value == '\n';
@@ -196,14 +197,10 @@ Tokenizer_Status read_tokens (Fin::Memory_Arena &arena, Source_File &unit) {
   usize tokens_count = 0;
 
   while (true) {
-    auto [error, token] = tokenizer.read_token();
-    if (error) return error.value.take();
+    try(token, tokenizer.read_token());
+    tokens[tokens_count++] = token;
 
-    bool last_one = token->kind == Token::Last;
-
-    tokens[tokens_count++] = token.take();
-
-    if (last_one) break;
+    if (token.kind == Token::Last) break;
 
     (void) tokenizer.advance();
   }
