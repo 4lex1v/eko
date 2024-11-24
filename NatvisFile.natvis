@@ -6,11 +6,12 @@
   </Type>
   
   <Type Name="Fin::List&lt;*&gt;">
+	<DisplayString>size={count}</DisplayString>
     <Expand>
       <LinkedListItems>
         <HeadPointer>first</HeadPointer>
         <NextPointer>next</NextPointer>
-        <ValueNode>this</ValueNode>
+        <ValueNode>value</ValueNode>
       </LinkedListItems>
     </Expand>
   </Type>
@@ -25,9 +26,8 @@
     </Expand>
   </Type>
 
-  <Type Name="Token">
-      
-      <DisplayString Condition="kind == Symbol">{kind,en} [ {value} ]</DisplayString>
+  <Type Name="Token">      
+      <DisplayString Condition="kind == Symbol">{kind,en} [ {text} ]</DisplayString>
       <DisplayString Condition="kind != Symbol">{kind,en}</DisplayString>
   </Type>
 

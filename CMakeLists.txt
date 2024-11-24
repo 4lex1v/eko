@@ -2,24 +2,26 @@ cmake_minimum_required(VERSION 3.15)
 
 project(Eko VERSION 0.0.1 LANGUAGES CXX)
 
+if (MSVC)
+    message(FATAL_ERROR "MSVC Toolchain is not supported")
+endif ()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(LLVM REQUIRED CONFIG)
-llvm_map_components_to_libnames(llvm_libs core target native)
+add_compile_definitions(PLATFORM_WIN32 CPU_ARCH_X64)
 
-add_executable(eko ./code/main.cpp)
+add_executable(eko
+        ./code/driver.cpp
+        ./code/tokenizer.cpp
+        ./code/parser.cpp
+        ./code/typer.cpp
+        ./code/llvm_codegen.cpp)
+
+target_include_directories(eko PRIVATE libs libs/llvm/include)
+target_compile_definitions(eko PRIVATE $<$<CONFIG:Debug>:DEV_BUILD>)
+
 set_target_properties(eko PROPERTIES 
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    VS_STARTUP_PROJECT eko
 )
-
-target_include_directories(eko SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
-target_compile_definitions(eko PRIVATE ${LLVM_DEFINITIONS})
-target_link_libraries(eko PRIVATE ${llvm_libs})
-
-if (MSVC)
-    target_compile_options(eko PRIVATE /MD)
-endif (MSVC)
-
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT eko)
-

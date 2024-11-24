@@ -8,16 +8,18 @@
 namespace Fin {
 
 struct String_Builder {
+  Memory_Arena &arena;
   List<String> sections;
   usize length = 0;
 
-  constexpr String_Builder (Memory_Arena &arena)
-    : sections { arena } {}
+  constexpr String_Builder (Memory_Arena &_arena)
+    : arena { _arena }
+  {}
 
   constexpr auto& add (this auto &self, String value) {
     if (is_empty(value)) return self;
 
-    list_push(self.sections, move(value));
+    list_push(self.arena, self.sections, move(value));
     self.length += value.length;
 
     return self;

@@ -16,16 +16,16 @@ bool setup_project (const Arguments *args, Project *project) {
   {
     add_include_search_path(target, "libs/llvm/include");
 
-    add_source_files(target,
-                     "code/driver.cpp",
-                     "code/parser.cpp",
-                     "code/typer.cpp",
-                     "code/llvm_codegen.cpp");
+    add_source_file(target, "code/driver.cpp");
+    add_source_file(target, "code/tokenizer.cpp");
+    add_source_file(target, "code/parser.cpp");
+    add_source_file(target, "code/typer.cpp");
+    add_source_file(target, "code/llvm_codegen.cpp");
 
     add_compiler_option(target, "-DPLATFORM_WIN32");
     add_compiler_options(target, "-O0 -g -gcodeview");
 
-    link_with(target, "kernel32.lib", "llvm-c.lib");
+    link_with(target, "msvcrtd.lib", "kernel32.lib", "llvm-c.lib");
   }
 
   return true;

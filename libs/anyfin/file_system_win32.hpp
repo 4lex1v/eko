@@ -83,7 +83,7 @@ static Sys_Result<bool> check_resource_exists (File_Path path, Option<Resource_T
 
   if (resource_type.is_none()) return true;
 
-  switch (resource_type.value) {
+  switch (resource_type.value.get()) {
     case Resource_Type::File:      return Ok(!(attributes  & FILE_ATTRIBUTE_DIRECTORY));
     case Resource_Type::Directory: return Ok(!!(attributes & FILE_ATTRIBUTE_DIRECTORY));
   }
@@ -266,7 +266,7 @@ static Sys_Result<void> for_each_file (File_Path directory, String extension, bo
 }
 
 static Sys_Result<List<File_Path>> list_files (Memory_Arena &arena, File_Path directory, String extension, bool recursive) {
-  List<File_Path> file_list { arena };
+  List<File_Path> file_list;
 
   auto list_recursive = [&] (this auto self, File_Path directory) -> Sys_Result<void> {
     WIN32_FIND_DATAA data;
@@ -290,7 +290,7 @@ static Sys_Result<List<File_Path>> list_files (Memory_Arena &arena, File_Path di
         if (!ends_with(file_name, extension)) continue;
           
         auto file_path = concat_string(local, directory, "\\", file_name);
-        if (!file_list.contains(file_path)) list_push(file_list, file_path);
+        if (!file_list.contains(file_path)) list_push(arena, file_list, file_path);
       }
     } while (FindNextFileA(search_handle, &data) != 0);
 
@@ -309,15 +309,15 @@ static Sys_Result<void> copy_file (File_Path from, File_Path to) {
   File_Path folder_path;
   {
     auto [sys_error, path] = get_folder_path(arena, to);
-    if (sys_error) return move(sys_error.value);
+    if (sys_error) return sys_error.take();
 
-    folder_path = path;
+    folder_path = path.take();
   }
 
   {
     auto [sys_error, result] = check_directory_exists(folder_path);
-    if (sys_error) return move(sys_error.value);
-    if (!result) create_directory(folder_path);
+    if (sys_error) return sys_error.take();
+    if (!result.get()) create_directory(folder_path);
   }
 
   if (!CopyFile(from.value, to.value, FALSE)) {
@@ -478,8 +478,10 @@ static Sys_Result<void> read_bytes_into_buffer (File &file, u8 *buffer, usize by
 static Sys_Result<Array<u8>> get_file_content (Memory_Arena &arena, File &file) {
   fin_check(reset_file_cursor(file));
 
-  auto [sys_error, file_size] = get_file_size(file);
-  if (sys_error)  return move(sys_error.value);
+  auto [sys_error, file_size_value] = get_file_size(file);
+  if (sys_error)  return sys_error.take();
+
+  auto file_size = file_size_value.take();
   if (!file_size) return Ok(Array<u8> {});
 
   auto buffer = reserve_array<u8>(arena, file_size, alignof(u8));
@@ -487,7 +489,7 @@ static Sys_Result<Array<u8>> get_file_content (Memory_Arena &arena, File &file) 
   usize offset = 0;
   while (offset < file_size) {
     DWORD bytes_read = 0;
-    if (!ReadFile(file.handle, buffer.values + offset, file_size - offset, &bytes_read, NULL))
+    if (!ReadFile(file.handle, buffer.values + offset, file_size - offset, &bytes_read, nullptr))
       return get_system_error();
 
     offset += bytes_read;
@@ -516,8 +518,8 @@ static Sys_Result<u64> get_last_update_timestamp (const File &file) {
 
 static Sys_Result<File_Mapping> map_file_into_memory (const File &file) {
   auto [sys_error, mapping_size] = get_file_size(file);
-  if (sys_error) return move(sys_error.value);
-  if (mapping_size == 0) return File_Mapping {};
+  if (sys_error) return sys_error.take();
+  if (mapping_size.get() == 0) return File_Mapping {};
   
   auto handle = CreateFileMapping(file.handle, nullptr, PAGE_READONLY, 0, 0, nullptr);
   if (!handle) return get_system_error();
@@ -531,7 +533,7 @@ static Sys_Result<File_Mapping> map_file_into_memory (const File &file) {
   return File_Mapping {
     .handle = handle,
     .memory = reinterpret_cast<char *>(memory),
-    .size   = mapping_size
+    .size   = mapping_size.get()
   };
 }
 

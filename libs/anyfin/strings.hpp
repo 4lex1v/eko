@@ -42,8 +42,9 @@ struct String {
   constexpr String () = default;
 
   fin_forceinline
-  constexpr String (Byte_Pointer auto _value, usize _length)
-    : value { cast_bytes(_value) }, length { _length }
+  constexpr String (Byte_Pointer auto _value, usize _length):
+    value  { cast_bytes(_value) },
+    length { _length }
   {
     if (length) fin_ensure(value[length - 1] != '\0');
   }
@@ -56,14 +57,6 @@ struct String {
   fin_forceinline
   constexpr String (Byte_Pointer auto _value)
     : String(_value, get_string_length(_value)) {}
-
-  fin_forceinline
-  constexpr String& operator = (String other) {
-    this->value  = other.value;
-    this->length = other.length;
-    
-    return *this;
-  }
 
   constexpr operator bool         (this auto self) { return self.value && self.length; }
   constexpr operator const char * (this auto self) { return self.value; }

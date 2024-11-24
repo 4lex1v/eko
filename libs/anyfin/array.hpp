@@ -7,6 +7,9 @@
 
 namespace Fin {
 
+/*
+  Defying all odds and expectations, it's a non-owning array "view" kind of array.
+ */
 template <typename T>
 struct Array {
   T     *values = nullptr;

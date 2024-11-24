@@ -64,14 +64,14 @@ struct Hash_Table {
   Allocator allocator;
   void *memory = nullptr;
 
-  Control_Byte *controls      = reinterpret_cast<Control_Byte *>(default_controls);
+  Control_Byte *controls      = nullptr;// reinterpret_cast<Control_Byte *>(default_controls);
   Slot         *slots         = nullptr;
   usize         capacity      = 0;
   usize         until_growth  = static_cast<usize>(Growth_Ratio * (f32) capacity);
 
   usize count = 0;
 
-  Hash_Table () = default;
+  Hash_Table () {}
   Hash_Table (Allocator _allocator):
     allocator { _allocator }
   {}

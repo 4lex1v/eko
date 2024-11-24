@@ -17,15 +17,15 @@ struct Allocator {
   void *context;
 };
 
-static inline void * alloc (Allocator &allocator, usize size, usize alignment = alignof(void *)) {
+static void * alloc (Allocator &allocator, usize size, usize alignment = alignof(void *)) {
   return allocator.alloc(allocator.context, size, alignment);  
 }
 
-static inline void free (Allocator &allocator, void *value) {
+static void free (Allocator &allocator, void *value) {
   allocator.free(allocator.context, value);
 }
   
-static inline void * realloc (Allocator &allocator, void *value, usize new_size, usize new_alignment = alignof(void *)) {
+static void * realloc (Allocator &allocator, void *value, usize new_size, usize new_alignment = alignof(void *)) {
   return allocator.realloc(allocator.context, value, new_size, new_alignment);
 }
   

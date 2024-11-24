@@ -22,7 +22,7 @@ using File_Path = String;
 
 /*
   Construct a platform-dependent file path.
-  Path separator is platform-dependent, i.e for Windows it's \, while for Unix systems - /.
+  Path separator is platform-dependent, i.e. for Windows it's \, while for Unix systems - /.
  */
 constexpr File_Path make_file_path (Memory_Arena &arena, String segment, Convertible_To<String> auto&&... other) {
   String segments[] { segment, other... };

@@ -1,10 +1,7 @@
 
 #pragma once
 
+#include "eko.hpp"
 #include "ast.hpp"
 
-namespace Eko {
-
-void codegen ();
-
-}
+void codegen (const Source_File &file);

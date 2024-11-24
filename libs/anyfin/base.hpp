@@ -29,7 +29,7 @@ using usize = decltype(sizeof(void *));
 
 #define fin_flag(N) 1 << (N)
 
-#define fin_forceinline __attribute__((always_inline))
+#define fin_forceinline [[clang::always_inline]]
 
 #ifdef DEV_BUILD
   #define fin_ensure(EXPR) do { if (!static_cast<bool>(EXPR)) __builtin_debugtrap(); } while (0)

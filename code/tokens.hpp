@@ -4,9 +4,7 @@
 #include "anyfin/base.hpp"
 #include "anyfin/strings.hpp"
 
-using Fin::String;
-
-enum struct Token_Kind {
+enum struct Token_Kind: u8 {
   Undefined,
   Last,
 
@@ -35,21 +33,23 @@ enum struct Token_Kind {
   False,
   True,
 
+  CR,
   Newline,
-  Numeric, // This should be refined into different types of literals
-  // supported, integers and floats at least
+  Numeric, // This should be refined into different types of literals supported, integers and floats at least
   String_Literal,
   Symbol,
 };
 
 struct Token {
   using enum Token_Kind;
-  
+
   Token_Kind kind = Undefined;
 
-  String value;
+  u16 row, col;
 
-  u32 row    = 0;
-  u32 column = 0;
+  Fin::String text;
 };
 
+static bool operator == (const Token *token, Token_Kind kind) {
+  return token->kind == kind;
+}

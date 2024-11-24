@@ -2,9 +2,16 @@
 #pragma once
 
 #include "anyfin/arena.hpp"
+#include "anyfin/array.hpp"
 
 #include "ast.hpp"
 
-using Fin::Memory_Arena;
+struct Parser_Error {
+  enum Kind {
+    Unexpected_Token
+  };
 
-List<Node *> build_tree (Memory_Arena &arena, const char *buffer);
+  Kind kind;
+};
+
+Fin::Option<Parser_Error> build_tree (Fin::Memory_Arena &arena, Source_File &unit);

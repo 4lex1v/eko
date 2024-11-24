@@ -10,9 +10,10 @@
 
 #include "eko.hpp"
 #include "ast.hpp"
+#include "typer.hpp"
 #include "codegen.hpp"
 
-namespace Eko {
+using namespace Fin;
 
 static LLVMContextRef llvm_context;
 static const char     *target_triple;
@@ -28,7 +29,6 @@ static void init_llvm_generator() {
   char *error = NULL;
   LLVMTargetRef target;
   if (LLVMGetTargetFromTriple(target_triple, &target, &error)) {
-    log("Error: %s\n", error);
     LLVMDisposeMessage(error);
     return;
   }
@@ -42,65 +42,19 @@ static void init_llvm_generator() {
   llvm_context = LLVMContextCreate();
 }
 
-struct Binding;
-
-enum struct Binding_Kind {
-  
-};
-
-enum struct Type_Kind {
-  Invalid,
-
-  Basic_Bool,
-  Basic_S32,
-  Basic_U32,
-
-  Struct,
-  Pointer,
-};
-
-struct Type {
-  using enum Type_Kind;
-  
-  Type_Kind kind = Invalid;
-  String name; // valid for struct types only
-};
-
-struct Struct_Binding {
-  String name;
-  List<Type *> fields;
-};
-
-struct Lambda_Binding {
-  String name;
-
-  const Type *return_type;
-};
-
-static LLVMTypeRef get_llvm_type (LLVMModuleRef module, const Type *type) {
-  switch (type->kind) {
-    case Type::Basic_Bool: return LLVMInt1TypeInContext(llvm_context);
-    case Type::Basic_S32:
-    case Type::Basic_U32: return LLVMInt32TypeInContext(llvm_context);
-    case Type::Struct:    return LLVMGetTypeByName(module, type->name.value);
-    case Type::Pointer:   return nullptr;
-    case Type::Invalid: {
-      fin_ensure(false && "Invalid type"); 
-      return nullptr;
-    }
-  }
-}
+// static LLVMTypeRef get_llvm_type (LLVMModuleRef module, const Type *type) {
+// }
 
 static void generate_function_ir (LLVMModuleRef unit, const Lambda_Binding &value) {
-  auto return_type = get_llvm_type(unit, value.return_type);
+  // auto return_type = get_llvm_type(unit, value.return_type);
 
-  LLVMTypeRef params [] {};
+  // LLVMTypeRef params [] {};
 
-  auto function_type = LLVMFunctionType(return_type, params, 0, false);
-  auto function      = LLVMAddFunction(unit, value.name.value, function_type);
+  // auto function_type = LLVMFunctionType(return_type, params, 0, false);
+  // auto function      = LLVMAddFunction(unit, value.name.value, function_type);
 }
 
-void codegen () {
+void codegen (const Source_File &file) {
   init_llvm_generator();
 
   auto arena = Memory_Arena(reserve_virtual_memory(megabytes(1)));
@@ -112,31 +66,22 @@ void codegen () {
   LLVMSetTarget(unit, target_triple);
   LLVMSetDataLayout(unit, data_layout_str);
 
-  Struct_Binding value;
-  value.name = "Args";
-
-  auto fields = new (arena) LLVMTypeRef[value.fields.count];
-  for (usize i = 0; auto &f: value.fields) {
-    fields[i++] = get_llvm_type(unit, f);
+  for (auto &decl: file.top_level) {
+    if (decl.kind == Binding::Lambda) {
+      generate_function_ir(unit, decl.lambda_binding);
+    }
   }
-
-  auto new_struct = LLVMStructCreateNamed(llvm_context, value.name.value);
-  LLVMStructSetBody(new_struct, fields, value.fields.count, false);
 
   char *error_message = nullptr;
   if (LLVMVerifyModule(unit, LLVMReturnStatusAction, &error_message)) {
-    log("Module verification failed: %\n", error_message);
     LLVMDisposeMessage(error_message);
   }
   else {
     auto ir_string = LLVMPrintModuleToString(unit);
-    log("%\n", ir_string);
     LLVMDisposeMessage(ir_string);
   }
 
   LLVMDisposeMessage(data_layout_str);
   LLVMDisposeTargetData(data_layout);
   LLVMContextDispose(llvm_context);
-}
-
 }

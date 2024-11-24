@@ -7,13 +7,9 @@
 
 #include "tokens.hpp"
 
-using Fin::Array;
-using Fin::List;
-using Fin::move;
-
 struct Node;
 
-enum struct Node_Kind {
+enum struct Node_Kind: u8 {
   Undefined,
 
   Expression,
@@ -27,7 +23,7 @@ enum struct Node_Kind {
 
 struct Expression_Node;
 
-enum struct Expression_Node_Kind {
+enum struct Expression_Node_Kind: u8 {
   Identifier,
   Member_Access,
   Literal,
@@ -61,7 +57,7 @@ struct Function_Call_Node {
   EXPR_KIND(Function_Call);
 
   Expression_Node *expr;
-  List<Expression_Node> args;
+  Fin::List<Expression_Node> args;
 };
 
 struct Binary_Expr_Node {
@@ -69,11 +65,10 @@ struct Binary_Expr_Node {
 
   Expression_Node *left;
   Expression_Node *right;
-  // TODO: Operation type
 };
 
 struct Expression_Node {
-  using enum Expression_Node_Kind;
+  NODE_KIND(Expression);
   
   Expression_Node_Kind expr_kind;
   union {
@@ -88,13 +83,13 @@ struct Expression_Node {
   Expression_Node (T value):
     expr_kind { T::kind }
   {
-    new (&this->literal_expr) T(move(value));
+    new (&this->literal_expr) T(Fin::move(value));
   }
 };
 
 struct Type_Node;
 
-enum struct Type_Node_Kind {
+enum struct Type_Node_Kind: u8 {
   Pointer,
   Array,
   Seq,
@@ -108,7 +103,7 @@ struct Plain_Type_Node {
   TYPE_KIND(Plain);
 
   Token type_name;
-  List<Type_Node> parameters;
+  Fin::List<Type_Node> parameters;
 };
 
 struct Pointer_Type_Node {
@@ -131,6 +126,8 @@ struct Seq_Type_Node {
 };
 
 struct Type_Node {
+  using enum Type_Node_Kind;
+
   NODE_KIND(Type);
 
   Type_Node_Kind type_kind;
@@ -143,14 +140,16 @@ struct Type_Node {
   };
 
   template <typename T>
-  Type_Node (T value): type_kind { T::kind } {
-    new (&plain_type) T(move(value));
+  Type_Node (T value):
+    type_kind { T::kind }
+  {
+    new (&plain_type) T(Fin::move(value));
   }
 };
 
-struct Declaration;
+struct Declaration_Node;
 
-enum struct Declaration_Node_Kind {
+enum struct Declaration_Node_Kind: u8 {
   Constant,
   Variable,
   Lambda,
@@ -182,8 +181,8 @@ struct Struct_Node {
   
   Token name;
 
-  List<Declaration> params;
-  List<Declaration> fields;
+  Fin::List<Variable_Node>    params;
+  Fin::List<Declaration_Node> fields;
 };
 
 struct Lambda_Node {
@@ -191,9 +190,10 @@ struct Lambda_Node {
 
   Token name;
 
-  List<Declaration> params;
-  Type_Node         return_type;
-  List<Node>        body;
+  Fin::List<Variable_Node>  params;
+  Fin::List<Node>           body;
+
+  Type_Node *return_type = nullptr;
 };
 
 struct Declaration_Node {
@@ -213,13 +213,13 @@ struct Declaration_Node {
   Declaration_Node (T value):
     decl_kind { T::kind }
   {
-    new (&this->constant_decl) T(move(value));
+    new (&this->constant_decl) T(Fin::move(value));
   }
 };
 
 struct Statement_Node;
 
-enum struct Statement_Node_Kind {
+enum struct Statement_Node_Kind: u8 {
   Return
 };
 
@@ -235,10 +235,19 @@ struct Return_Node {
 struct Statement_Node {
   using enum Statement_Node_Kind;
 
+  NODE_KIND(Statement);
+
   Statement_Node_Kind stmnt_kind;
   union {
     Return_Node return_stmnt;
   };
+
+  template <typename T>
+  Statement_Node (T value):
+    stmnt_kind { T::kind }
+  {
+    new (&this->return_stmnt) T(Fin::move(value));
+  }
 };
 
 struct Node {
@@ -257,7 +266,7 @@ struct Node {
   Node (T value):
     kind { T::kind }
   {
-    new (&this->expr_node) T(move(value));
+    new (&this->expr_node) T(Fin::move(value));
   }
 };
 
