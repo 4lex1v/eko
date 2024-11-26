@@ -67,8 +67,8 @@ void codegen (const Source_File &file) {
   LLVMSetDataLayout(unit, data_layout_str);
 
   for (auto &decl: file.top_level) {
-    if (decl.kind == Binding::Lambda) {
-      generate_function_ir(unit, decl.lambda_binding);
+    if (decl->kind == Binding::Lambda) {
+      generate_function_ir(unit, decl->lambda_binding);
     }
   }
 

@@ -5,15 +5,17 @@
 #include "anyfin/list.hpp"
 #include "anyfin/meta.hpp"
 
+#include "eko.hpp"
 #include "tokens.hpp"
+
+struct Type;
+struct Struct_Binding;
+struct Lambda_Binding;
 
 struct Node;
 
 enum struct Node_Kind: u8 {
-  Undefined,
-
   Expression,
-  Type,
   Declaration,
   Statement
 };
@@ -68,6 +70,8 @@ struct Binary_Expr_Node {
 };
 
 struct Expression_Node {
+  using enum Expression_Node_Kind;
+
   NODE_KIND(Expression);
   
   Expression_Node_Kind expr_kind;
@@ -115,8 +119,8 @@ struct Pointer_Type_Node {
 struct Array_Type_Node {
   TYPE_KIND(Array);
 
-  Expression_Node  bounds;
   Type_Node       *elements_type;
+  Expression_Node  bounds;
 };
 
 struct Seq_Type_Node {
@@ -127,8 +131,6 @@ struct Seq_Type_Node {
 
 struct Type_Node {
   using enum Type_Node_Kind;
-
-  NODE_KIND(Type);
 
   Type_Node_Kind type_kind;
 
@@ -183,6 +185,8 @@ struct Struct_Node {
 
   Fin::List<Variable_Node>    params;
   Fin::List<Declaration_Node> fields;
+
+  Struct_Binding *binding = nullptr;
 };
 
 struct Lambda_Node {
@@ -194,6 +198,8 @@ struct Lambda_Node {
   Fin::List<Node>           body;
 
   Type_Node *return_type = nullptr;
+
+  Lambda_Binding *binding = nullptr;
 };
 
 struct Declaration_Node {
@@ -257,7 +263,6 @@ struct Node {
 
   union {
     Expression_Node  expr_node;
-    Type_Node        type_node;
     Declaration_Node decl_node;
     Statement_Node   stmnt_node;
   };

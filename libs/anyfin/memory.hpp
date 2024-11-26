@@ -29,7 +29,7 @@ constexpr bool is_aligned_by (const auto value, const usize by) {
 }
 
 template <typename T>
-constexpr auto copy_memory (T *destination, const T *source, const usize count) {
+constexpr auto copy_memory (T *destination, const T *source, const usize count = 1) {
   return __builtin_memcpy(destination, source, sizeof(T) * count);
 }
 

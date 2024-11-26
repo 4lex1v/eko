@@ -142,7 +142,7 @@ struct Parser {
 
       try(element_type, parse_type());
 
-      return Type_Node(Array_Type_Node(bounds_argument, new_node<Type_Node>(element_type)));
+      return Type_Node(Array_Type_Node(new_node<Type_Node>(element_type), bounds_argument));
     }
 
     if (!looking_at(Token::Symbol)) return unexpected_token(Token::Symbol);

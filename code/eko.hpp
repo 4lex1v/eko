@@ -5,6 +5,7 @@
 #include "anyfin/array.hpp"
 #include "anyfin/list.hpp"
 #include "anyfin/hash_table.hpp"
+#include "anyfin/strings.hpp"
 
 struct Node;
 struct Token;
@@ -14,13 +15,11 @@ struct Type;
 struct Scope {
   const Scope *parent;
 
-  Fin::Hash_Table<usize, Type>    types;
-  Fin::Hash_Table<usize, Binding> symbols;
+  Fin::Hash_Table<Fin::String, Binding *> defs;
 
   Scope (Fin::Allocator allocator, const Scope *_parent = nullptr):
-    parent  { _parent },
-    types   { allocator },
-    symbols { allocator }
+    parent { _parent },
+    defs   { allocator }
   {}
 };
 
@@ -39,7 +38,7 @@ struct Source_File {
 
   Scope scope;
   
-  Fin::List<Binding> top_level;
+  Fin::List<Binding *> top_level;
 
   Source_File (Fin::Allocator allocator, const Module_Context *_module, const char *_file_path, Fin::Array<char> _buffer):
     file_path { _file_path },

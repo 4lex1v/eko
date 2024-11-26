@@ -35,7 +35,7 @@ struct Tokenizer {
   */
 
   [[nodiscard]] Token make_token (Token_Kind kind, Fin::String value = {}) const {
-    return { .kind = kind, .row = row, .col = column, .text = value };
+    return { .kind = kind, .row = row, .col = column, .value = value };
   }
 
   [[nodiscard]] bool looking_at (u8 value) const { return *current == value; }

@@ -229,5 +229,19 @@ struct split_string {
   constexpr bool end_reached () { return cursor == end; }
 };
 
+static inline u64 compute_hash (const String &value) {
+  const usize fnv_prime    = 1099511628211u;
+  const usize offset_basis = 14695981039346656037u;
+
+  usize hash = offset_basis;
+  auto count = value.length;
+  for (usize i = 0; i < count; i++) {
+    hash ^= static_cast<usize>(value[i]);
+    hash *= fnv_prime;
+  }
+
+  return hash;
+}
+
 }
   

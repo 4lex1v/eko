@@ -12,12 +12,16 @@ namespace Fin {
 
 constexpr static inline usize seed = 0x517cc1b727220a95;
 
-static inline u64 compute_hash (const u64 value) {
+template <typename T>
+static u64 compute_hash (const T &value) {
+  static_assert(false, "No compute_hash defined for the this type");
+  return 0;
+}
+
+static u64 compute_hash (const u64 value) {
   const u8 *bytes = reinterpret_cast<const u8 *>(&value);
 
-  auto rotate_right = [] <typename T> (T value, usize count) {
-    return (value >> count) | (value << ((sizeof(T) * 8) - count));
-  };
+#define rotate_right(VALUE, COUNT) (((VALUE) >> (COUNT)) | ((VALUE) << ((sizeof(decltype((VALUE))) * 8) - (COUNT))))
 
   size_t hash = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
   hash |= (size_t) (bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24)) << 16 << 16;
@@ -31,6 +35,8 @@ static inline u64 compute_hash (const u64 value) {
   hash ^= rotate_right(hash, 28);
   hash += (hash << 31);
   hash = (~hash) + (hash << 18);
+
+#undef rotate_right
 
   return hash;
 }
@@ -64,7 +70,7 @@ struct Hash_Table {
   Allocator allocator;
   void *memory = nullptr;
 
-  Control_Byte *controls      = nullptr;// reinterpret_cast<Control_Byte *>(default_controls);
+  Control_Byte *controls      = reinterpret_cast<Control_Byte *>(default_controls);
   Slot         *slots         = nullptr;
   usize         capacity      = 0;
   usize         until_growth  = static_cast<usize>(Growth_Ratio * (f32) capacity);
@@ -101,7 +107,7 @@ struct Hash_Table {
 
     auto slot_offset = target.offset;
 
-    assert_msg(slot_offset >= 0, "Something went wrong while looking up the slot to store the value");
+    fin_ensure(slot_offset >= 0); //, "Something went wrong while looking up the slot to store the value");
 
     auto &slot = slots[slot_offset];
     slot.key   = move(key);
@@ -152,7 +158,7 @@ struct Hash_Table {
 
     usize total_probe_length = 0;
     for (usize index = 0; index < old_capacity; index++) {
-      if (cast_enum(old_controls[index]) < 0) continue; // if MSB is not set, it's a filled slot
+      if (static_cast<s8>(old_controls[index]) < 0) continue; // if MSB is not set, it's a filled slot
 
       const auto hash            = compute_hash(old_slots[index].key);
       const auto insert_position = find_position_for_insertion(hash);
@@ -160,7 +166,7 @@ struct Hash_Table {
       total_probe_length += insert_position.probe_length;
 
       set_control_byte(insert_position.offset, h2_hash(hash));
-      runtime_move_memory(slots + insert_position.offset, old_slots + index);
+      copy_memory(slots + insert_position.offset, old_slots + index);
     }
 
     if (old_capacity) free(this->allocator, old_controls);
@@ -173,7 +179,7 @@ struct Hash_Table {
   }
 
 private:
-  decltype(auto) find_slot (this auto &&self, const Key &key) {
+  Slot * find_slot (this auto &&self, const Key &key) {
     const auto key_hash = compute_hash(key);
 
     auto probe = Probe_Position(key_hash, self.capacity);
@@ -193,12 +199,12 @@ private:
 
       probe.next();
 
-      assert_msg(probe.index <= self.capacity, "Table is full");
+      fin_ensure(probe.index <= self.capacity); // table is full
     }
   }
 
   void allocate_backing_memory (const usize new_capacity) {
-    assert_msg(new_capacity > 0, "Attempt to initialize the hash table with 0 capacity");
+    fin_ensure(new_capacity > 0); // "Attempt to initialize the hash table with 0 capacity");
 
     this->capacity     = new_capacity;
     this->until_growth = static_cast<usize>(Growth_Ratio * (f32) new_capacity) - this->count;
@@ -212,12 +218,15 @@ private:
     const usize controls_size   = capacity + 15;
     const usize allocation_size = controls_size + (capacity * sizeof(Slot));
 
-    u8 *memory = alloc(this->allocator, allocation_size);
+    auto memory = reinterpret_cast<u8 *>(alloc(this->allocator, allocation_size));
 
     controls = reinterpret_cast<Control_Byte *>(memory);
     slots    = reinterpret_cast<Slot *>(memory + controls_size);
 
-    runtime_fill_memory(reinterpret_cast<u8 *>(controls), controls_size, cast_enum(Control_Byte::Empty));
+    for (int i = 0; i < controls_size; i++) {
+      controls[i] = Control_Byte::Empty;
+    }
+
   }
 
   void set_control_byte (const usize offset, const u8 control_byte_value) {
@@ -275,7 +284,7 @@ private:
         }
       }
 
-      assert_msg(matches_count > 0, "Something went wrong, the number of matches should not be 0");
+      fin_ensure(matches_count > 0); // Something went wrong, the number of matches should not be 0
 
       return matches_count;
     }
@@ -285,7 +294,7 @@ private:
     }
 
     bool is_empty () const {
-      return static_cast<bool>(_mm_movemask_epi8(_mm_cmpeq_epi8(_mm_set1_epi8(cast_enum(Control_Byte::Empty)), this->control)));
+      return static_cast<bool>(_mm_movemask_epi8(_mm_cmpeq_epi8(_mm_set1_epi8(static_cast<s8>(Control_Byte::Empty)), this->control)));
     }
   };
 
@@ -298,7 +307,7 @@ private:
       probe_length { probe.index }
     {}
   };
-
+  
   Insert_Position find_position_for_insertion (const u64 key_hash) const {
     auto probe = Probe_Position(key_hash, this->capacity);
 
@@ -307,7 +316,7 @@ private:
 
       const auto mask = group.empty_or_deleted_slots_mask();
       if (mask) {
-        const auto position = count_trailing_zeros(mask);
+        const auto position = __builtin_ctzll(mask);
         return Insert_Position(position, probe);
       }
 

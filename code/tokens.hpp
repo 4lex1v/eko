@@ -47,7 +47,7 @@ struct Token {
 
   u16 row, col;
 
-  Fin::String text;
+  Fin::String value;
 };
 
 static bool operator == (const Token *token, Token_Kind kind) {

@@ -73,7 +73,11 @@ int main () {
   auto tokenizer_status = read_tokens(arena, unit);
   if (tokenizer_status != Tokenizer_Status::Success) return 1;
 
-  auto tree = build_tree(arena, unit);
+  auto parser_error = build_tree(arena, unit);
+  if (parser_error) return 1;
+
+  auto typer_error = typecheck(arena, unit);
+  if (typer_error) return 1;
 
   return 0;
 }
