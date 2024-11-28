@@ -172,9 +172,166 @@ struct Parser {
     return Variable_Node(param_name, nullptr, new_node(init_expr));
   }
 
-  Result<usize> parse_integer (const Token &token) {
-    return 0;
+  Result<s64> parse_signed_integer (const Token &token, bool is_negative) {
+    const char* ptr = token.value;
+    size_t len      = token.value.length;
+
+    int base = 10;
+
+    if (len >= 2 && ptr[0] == '0') {
+      if (ptr[1] == 'x' || ptr[1] == 'X') {
+        base = 16;
+        ptr += 2;
+        len -= 2;
+      }
+      else if (ptr[1] == 'b' || ptr[1] == 'B') {
+        base = 2;
+        ptr += 2;
+        len -= 2;
+      }
+      else if (ptr[1] >= '0' && ptr[1] <= '7') {
+        base = 8;
+        ptr += 1;
+        len -= 1;
+      }
+      else if (ptr[1] == '\0') {
+        // It's '0' with no additional digits; valid decimal zero
+      }
+      else {
+        //return Parser_Error("Invalid base prefix in integer literal.");
+        return Parser_Error();
+      }
+    }
+
+    // Parse digits
+    u64 unsigned_value = 0;
+    for (size_t i = 0; i < len; ++i) {
+      char c = ptr[i];
+      int digit;
+
+      // Convert character to digit value
+      if (c >= '0' && c <= '9') {
+        digit = c - '0';
+      } else if (c >= 'a' && c <= 'f') {
+        digit = 10 + (c - 'a');
+      } else if (c >= 'A' && c <= 'F') {
+        digit = 10 + (c - 'A');
+      } else {
+        //return Parser_Error("Invalid character in integer literal.");
+        return Parser_Error();
+      }
+
+      if (digit >= base) {
+        //return Error("Digit out of range for the specified base.");
+        return Parser_Error();
+      }
+
+      // Check for overflow
+      if (unsigned_value > (UINT64_MAX - digit) / base) {
+        //return Error("Integer literal out of range.");
+        return Parser_Error();
+      }
+
+      unsigned_value = unsigned_value * base + digit;
+    }
+
+    // Convert to signed 64-bit integer
+    s64 signed_value;
+    const u64 s64_max = 0x7FFFFFFFFFFFFFFFULL;
+    const u64 s64_min_abs = 0x8000000000000000ULL; // Absolute value of s64 min
+
+    if (is_negative) {
+      // Handle negative values
+      if (unsigned_value <= s64_min_abs) {
+        if (unsigned_value == s64_min_abs) {
+          // Handle most negative number (cannot be represented positively)
+          signed_value = (s64)(-s64_min_abs);
+        } else {
+          signed_value = -(s64)unsigned_value;
+        }
+      } else {
+        //return Error("Integer literal out of range for signed 64-bit integer.");
+        return Parser_Error();
+      }
+    } else {
+      // Handle positive values
+      if (unsigned_value <= s64_max) {
+        signed_value = (s64)unsigned_value;
+      } else {
+        //return Error("Integer literal out of range for signed 64-bit integer.");
+        return Parser_Error();
+      }
+    }
+
+    return signed_value;
   }
+
+  Result<u64> parse_unsigned_integer (const Token &token) {
+    const char* ptr = token.value;
+    size_t len      = token.value.length;
+
+    int base = 10;
+
+    if (len >= 2 && ptr[0] == '0') {
+      if (ptr[1] == 'x' || ptr[1] == 'X') {
+        base = 16;
+        ptr += 2;
+        len -= 2;
+      }
+      else if (ptr[1] == 'b' || ptr[1] == 'B') {
+        base = 2;
+        ptr += 2;
+        len -= 2;
+      }
+      else if (ptr[1] >= '0' && ptr[1] <= '7') {
+        base = 8;
+        ptr += 1;
+        len -= 1;
+      }
+      else if (ptr[1] == '\0') {
+        // It's '0' with no additional digits; valid decimal zero
+      }
+      else {
+        //return Parser_Error("Invalid base prefix in integer literal.");
+        return Parser_Error();
+      }
+    }
+
+    // Parse digits
+    u64 unsigned_value = 0;
+    for (size_t i = 0; i < len; ++i) {
+      char c = ptr[i];
+      int digit;
+
+      // Convert character to digit value
+      if (c >= '0' && c <= '9') {
+        digit = c - '0';
+      } else if (c >= 'a' && c <= 'f') {
+        digit = 10 + (c - 'a');
+      } else if (c >= 'A' && c <= 'F') {
+        digit = 10 + (c - 'A');
+      } else {
+        //return Error("Invalid character in integer literal.");
+        return Parser_Error();
+      }
+
+      if (digit >= base) {
+        //return Error("Digit out of range for the specified base.");
+        return Parser_Error();
+      }
+
+      // Check for overflow
+      if (unsigned_value > (UINT64_MAX - digit) / base) {
+        //return Error("Integer literal out of range for unsigned 64-bit integer.");
+        return Parser_Error();
+      }
+
+      unsigned_value = unsigned_value * base + digit;
+    }
+
+    return unsigned_value;
+  }
+
   
   Result<Expression_Node> parse_unary_expression () {
     auto is_signed = eat(Token::Minus);
@@ -182,7 +339,22 @@ struct Parser {
     if (looking_at(Token::Integer_Literal)) {
       auto literal = Literal_Node { .value = *current };
 
-      try(int_value, parse_integer(*current));
+      if (is_signed) {
+        try(value, parse_signed_integer(*current, true));  
+        literal.is_signed  = true;
+        literal.sint_value = value;
+      }
+      else {
+        auto [signed_error, svalue] = parse_signed_integer(*current, false);
+        if (!signed_error) {
+          literal.is_signed  = true;
+          literal.sint_value = svalue.take();
+        }
+        else {
+          try(uvalue, parse_unsigned_integer(*current));
+          literal.uint_value = uvalue;
+        }
+      }
       
       (void) advance();
 

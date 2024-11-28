@@ -201,7 +201,8 @@ Tokenizer_Status read_tokens (Fin::Memory_Arena &arena, Source_File &unit) {
 
   while (true) {
     try(token, tokenizer.read_token());
-    tokens[tokens_count++] = token;
+    *reserve<Token>(arena) = token; 
+    tokens_count += 1;
 
     if (token.kind == Token::Last) break;
 

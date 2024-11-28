@@ -27,7 +27,7 @@
   </Type>
 
   <Type Name="Token">      
-      <DisplayString Condition="kind == Symbol">{kind,en} [ {text} ]</DisplayString>
+      <DisplayString Condition="kind == Symbol">{kind,en} [ {value} ]</DisplayString>
       <DisplayString Condition="kind != Symbol">{kind,en}</DisplayString>
   </Type>
 
