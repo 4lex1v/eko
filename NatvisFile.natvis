@@ -31,4 +31,33 @@
       <DisplayString Condition="kind != Symbol">{kind,en}</DisplayString>
   </Type>
 
+	<Type Name="Expression_Node">
+		<DisplayString>{expr_kind,en}</DisplayString>
+		<Expand>
+			<Item Name="literal" Condition="expr_kind == Expression_Node_Kind::Literal">literal_expr</Item>
+		</Expand>
+	</Type>
+	
+	<Type Name="Statement_Node">
+		<DisplayString>{stmnt_kind,en}</DisplayString>
+		<Expand>
+			<Item Name="return" Condition="stmnt_kind == Statement_Node_Kind::Return">return</Item>
+		</Expand>
+	</Type>
+	
+	<Type Name="Declaration_Node">
+		<DisplayString>{decl_kind,en}</DisplayString>
+		<Expand>
+			<Item Name="lambda" Condition="decl_kind == Lambda">lambda_decl</Item>
+		</Expand>
+	</Type>
+	
+	<Type Name="Node">
+		<DisplayString>{kind,en}</DisplayString>
+		<Expand>
+			<Item Name="decl"      Condition="kind == Node_Kind::Declaration">decl_node</Item>
+			<Item Name="statement" Condition="kind == Node_Kind::Statement">stmnt_node</Item>
+		</Expand>
+	</Type>
+
 </AutoVisualizer>

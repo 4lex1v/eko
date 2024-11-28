@@ -171,10 +171,26 @@ struct Parser {
 
     return Variable_Node(param_name, nullptr, new_node(init_expr));
   }
+
+  Result<usize> parse_integer (const Token &token) {
+    return 0;
+  }
   
   Result<Expression_Node> parse_unary_expression () {
-    if (looking_at(Token::String_Literal) || looking_at(Token::Numeric)) {
-      auto literal = Literal_Node(*current);
+    auto is_signed = eat(Token::Minus);
+
+    if (looking_at(Token::Integer_Literal)) {
+      auto literal = Literal_Node { .value = *current };
+
+      try(int_value, parse_integer(*current));
+      
+      (void) advance();
+
+      return Expression_Node(literal);
+    }
+
+    if (looking_at(Token::String_Literal)) {
+      auto literal = Literal_Node { .value = *current, .string_value = current->value };
       (void) advance();
       return Expression_Node(literal);
     }
@@ -188,9 +204,9 @@ struct Parser {
       ensure_token(Token::Symbol);
 
       node = Expression_Node(Member_Access_Node {
-          .expr   = new_node(node),
-          .member = *current
-        });
+        .expr   = new_node(node),
+        .member = *current
+      });
 
       (void) advance();
     }

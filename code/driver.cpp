@@ -77,7 +77,7 @@ int main () {
   if (parser_error) return 1;
 
   auto typer_error = typecheck(arena, unit);
-  if (typer_error) return 1;
+  if (typer_error.is_error()) return 1;
 
   return 0;
 }

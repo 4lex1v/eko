@@ -3,7 +3,7 @@
 
 #include "anyfin/list.hpp"
 #include "anyfin/arena.hpp"
-#include "anyfin/option.hpp"
+#include "anyfin/result.hpp"
 
 #include "eko.hpp"
 #include "ast.hpp"
@@ -22,8 +22,10 @@ enum struct Type_Kind: u8 {
   Basic_Unsigned_Word,
   Basic_Signed_Double_Word,
   Basic_Unsigned_Double_Word,
+
   Basic_Float,
   Basic_Double,
+  
   Basic_String_Literal,
 
   Struct,
@@ -103,4 +105,6 @@ struct Typer_Error {
   Kind kind;
 };
 
-Fin::Option<Typer_Error> typecheck (Fin::Memory_Arena &arena, Source_File &file);
+template <typename T> using Result = Fin::Result<Typer_Error, T>;
+
+Result<void> typecheck (Fin::Memory_Arena &arena, Source_File &file);

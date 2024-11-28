@@ -34,8 +34,11 @@ struct Tokenizer {
     Tokenizer Functions
   */
 
-  [[nodiscard]] Token make_token (Token_Kind kind, Fin::String value = {}) const {
-    return { .kind = kind, .row = row, .col = column, .value = value };
+  template <typename T = Fin::String>
+  [[nodiscard]] Token make_token (Token_Kind kind, T value = {}) const {
+    Token token { .kind = kind, .row = row, .col = column };
+    new (&token.value) T(Fin::move(value));
+    return token;
   }
 
   [[nodiscard]] bool looking_at (u8 value) const { return *current == value; }
@@ -125,7 +128,7 @@ struct Tokenizer {
       }
     }
 
-    return make_token(Token::Numeric, Fin::String(value_start, current - value_start));
+    return make_token(Token::Integer_Literal, Fin::String(value_start, current - value_start));
   }
 
   Result read_string_literal () {

@@ -35,8 +35,11 @@ enum struct Token_Kind: u8 {
 
   CR,
   Newline,
-  Numeric, // This should be refined into different types of literals supported, integers and floats at least
+
+  Integer_Literal,
+  Float_Literal,
   String_Literal,
+
   Symbol,
 };
 
@@ -47,7 +50,7 @@ struct Token {
 
   u16 row, col;
 
-  Fin::String value;
+  Fin::String value;  
 };
 
 static bool operator == (const Token *token, Token_Kind kind) {

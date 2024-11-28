@@ -40,6 +40,15 @@ struct Literal_Node {
   EXPR_KIND(Literal);
 
   Token value;
+  union {
+    Fin::String string_value;
+    s64         sint_value;
+    u64         uint_value;
+    float       float_value;
+    double      double_value;
+  };
+
+  bool is_signed = false;
 };
 
 struct Identifier_Node {

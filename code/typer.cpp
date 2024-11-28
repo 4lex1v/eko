@@ -8,13 +8,23 @@
 #include "typer.hpp"
 #include "utils.hpp"
 
-template <typename T> using Result = Fin::Result<Typer_Error, T>;
-
 struct Basic_Types {
   constexpr static auto void_type = Type { .kind = Type::Basic_Void };
   constexpr static auto bool_type = Type { .kind = Type::Basic_Bool };
+
+  constexpr static auto s8_type   = Type { .kind = Type::Basic_Signed_Byte };
+  constexpr static auto s16_type  = Type { .kind = Type::Basic_Signed_Half_Word };
   constexpr static auto s32_type  = Type { .kind = Type::Basic_Signed_Word };
+  constexpr static auto s64_type  = Type { .kind = Type::Basic_Signed_Double_Word };
+
+  constexpr static auto u8_type   = Type { .kind = Type::Basic_Unsigned_Byte };
+  constexpr static auto u16_type  = Type { .kind = Type::Basic_Unsigned_Half_Word };
+  constexpr static auto u32_type  = Type { .kind = Type::Basic_Unsigned_Word };
+  constexpr static auto u64_type  = Type { .kind = Type::Basic_Unsigned_Double_Word };
 };
+
+static int64_t signed_min (int bits) { return -(1LL << (bits - 1)); }
+static int64_t signed_max (int bits) { return  (1LL << (bits - 1)) - 1; }
 
 struct Typer {
   Fin::Memory_Arena &arena;
@@ -32,7 +42,7 @@ struct Typer {
     return Typer_Error();
   }
 
-  Fin::Option<Typer_Error> typecheck () {
+  Result<void> typecheck () {
     for (auto node: file.tree) {
       switch (node.kind) {
         case Node::Declaration: {
@@ -47,7 +57,7 @@ struct Typer {
       }
     }
 
-    return Fin::None();
+    return Fin::Ok();
   }
 
   Fin::Option<Type> resolve_built_in_type (const Token &token) {
@@ -107,10 +117,32 @@ struct Typer {
     return Typer_Error();
   }
 
-  Result<const Type *> typecheck_expression (const Scope &enclosing, const Expression_Node &expr) {
+  Result<Type> typecheck_expression (const Scope &enclosing, const Expression_Node &expr) {
     switch (expr.expr_kind) {
       case Expression_Node::Literal: {
         auto &lit_node = expr.literal_expr;
+
+        if (lit_node.value.kind == Token::String_Literal) {
+          
+        }
+
+        if (lit_node.value.kind == Token::Integer_Literal) {
+          if (lit_node.is_signed) {
+            auto &value = lit_node.sint_value;
+            
+            if (value >= signed_min(8)  && value <= signed_max(8))  return Type(Basic_Types::s8_type);
+            if (value >= signed_min(16) && value <= signed_max(16)) return Type(Basic_Types::s16_type);
+            if (value >= signed_min(32) && value <= signed_max(32)) return Type(Basic_Types::s32_type);
+            else                                                    return Type(Basic_Types::s64_type);
+          }
+
+          auto &value = lit_node.uint_value;
+
+          if (value <= static_cast<u8>(-1))  return Type(Basic_Types::u8_type);
+          if (value <= static_cast<u16>(-1)) return Type(Basic_Types::u16_type);
+          if (value <= static_cast<u32>(-1)) return Type(Basic_Types::u32_type);
+          else                               return Type(Basic_Types::u64_type);
+        }
         
         break;
       }
@@ -167,13 +199,89 @@ struct Typer {
     }
   }
 
-  void typecheck_statement (const Lambda_Binding &context, Statement_Node &node) {
+  bool types_are_the_same (const Type &left, const Type &right) {
+    if (left.kind != right.kind) return false;
+
+    if (left.kind == Type::Pointer || left.kind == Type::Seq)
+      return types_are_the_same(*left.element, *right.element);
+
+    if (left.kind == Type::Array) {
+      // TODO: Figure out how to compare bounding expression results
+      return types_are_the_same(*left.element, *right.element);
+    }
+
+    if (left.kind == Type::Struct) return left.binding == right.binding;
+
+    /*
+      These are basic the same basic types...?
+      TODO: An interesting question is how to deal with upcasts?
+     */
+    return true;
+  }
+
+  bool int_value_type_can_fit (const Type &storage_type, const Type &value_type) {
+    if (value_type.kind == Type::Basic_Signed_Byte) {
+      return ((storage_type.kind == Type::Basic_Signed_Byte) ||
+              (storage_type.kind == Type::Basic_Signed_Half_Word) ||
+              (storage_type.kind == Type::Basic_Signed_Word) ||
+              (storage_type.kind == Type::Basic_Signed_Double_Word));
+    }
+
+    if (value_type.kind == Type::Basic_Signed_Half_Word) {
+      return ((storage_type.kind == Type::Basic_Signed_Half_Word) ||
+              (storage_type.kind == Type::Basic_Signed_Word) ||
+              (storage_type.kind == Type::Basic_Signed_Double_Word));
+    }
+
+    if (value_type.kind == Type::Basic_Signed_Word) {
+      return ((storage_type.kind == Type::Basic_Signed_Word) ||
+              (storage_type.kind == Type::Basic_Signed_Double_Word));
+    }
+
+    if (value_type.kind == Type::Basic_Signed_Double_Word) {
+      return (storage_type.kind == Type::Basic_Signed_Double_Word);
+    }
+
+    if (value_type.kind == Type::Basic_Unsigned_Byte) {
+      return ((storage_type.kind == Type::Basic_Unsigned_Byte) ||
+              (storage_type.kind == Type::Basic_Unsigned_Half_Word) ||
+              (storage_type.kind == Type::Basic_Unsigned_Word) ||
+              (storage_type.kind == Type::Basic_Unsigned_Double_Word));
+    }
+
+    if (value_type.kind == Type::Basic_Unsigned_Half_Word) {
+      return ((storage_type.kind == Type::Basic_Unsigned_Half_Word) ||
+              (storage_type.kind == Type::Basic_Unsigned_Word) ||
+              (storage_type.kind == Type::Basic_Unsigned_Double_Word));
+    }
+
+    if (value_type.kind == Type::Basic_Unsigned_Word) {
+      return ((storage_type.kind == Type::Basic_Unsigned_Word) ||
+              (storage_type.kind == Type::Basic_Unsigned_Double_Word));
+    }
+
+    if (value_type.kind == Type::Basic_Unsigned_Double_Word) {
+      return (storage_type.kind == Type::Basic_Unsigned_Double_Word);
+    }
+
+    return false;
+  }
+
+  Result<void> typecheck_statement (const Lambda_Binding &context, Statement_Node &node) {
     switch (node.stmnt_kind) {
       case Statement_Node::Return: {
-        typecheck_expression(context.scope, node.return_stmnt.value);
+        try(expr_result_type, typecheck_expression(context.scope, node.return_stmnt.value));
+
+        if (!types_are_the_same(context.return_type, expr_result_type)) {
+          if (int_value_type_can_fit(context.return_type, expr_result_type)) return Fin::Ok();
+          return Typer_Error();
+        }
+
         break;
       }
     }
+
+    return Fin::Ok();
   }
 
   Result<Binding *> typecheck_lambda (Scope &enclosing, Lambda_Node &lambda_node) {
@@ -218,14 +326,12 @@ struct Typer {
       }
     }
 
-    
-
     return binding;
   }
 
 };
 
-Fin::Option<Typer_Error> typecheck (Fin::Memory_Arena &arena, Source_File &file) {
+Result<void> typecheck (Fin::Memory_Arena &arena, Source_File &file) {
   Typer typer(arena, file);
   return typer.typecheck();
 }
