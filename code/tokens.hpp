@@ -4,6 +4,8 @@
 #include "anyfin/base.hpp"
 #include "anyfin/strings.hpp"
 
+#include "utils.hpp"
+
 enum struct Token_Kind: u8 {
   Undefined,
   Last,
@@ -50,7 +52,9 @@ struct Token {
 
   u16 row, col;
 
-  Fin::String value;  
+  Fin::String value;
+
+  GEN_KIND_CHECK(kind);
 };
 
 static bool operator == (const Token *token, Token_Kind kind) {

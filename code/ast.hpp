@@ -7,6 +7,7 @@
 
 #include "eko.hpp"
 #include "tokens.hpp"
+#include "utils.hpp"
 
 struct Type;
 struct Struct_Binding;
@@ -36,10 +37,20 @@ enum struct Expression_Node_Kind: u8 {
 #define EXPR_KIND(KIND) \
   static const auto kind = Expression_Node_Kind::KIND
 
+enum struct Literal_Node_Kind: u8 {
+  String,
+  Signed_Integer,
+  Unsigned_Integer,
+  Float,
+  Double
+};
+
 struct Literal_Node {
+  using enum Literal_Node_Kind;
+
   EXPR_KIND(Literal);
 
-  Token value;
+  Literal_Node_Kind lit_kind;
   union {
     Fin::String string_value;
     s64         sint_value;
@@ -49,6 +60,8 @@ struct Literal_Node {
   };
 
   bool is_signed = false;
+
+  GEN_KIND_CHECK(lit_kind);
 };
 
 struct Identifier_Node {
@@ -92,12 +105,8 @@ struct Expression_Node {
     Binary_Expr_Node   binary_expr;
   };
 
-  template <typename T>
-  Expression_Node (T value):
-    expr_kind { T::kind }
-  {
-    new (&this->literal_expr) T(Fin::move(value));
-  }
+  GEN_CONSTRUCTOR(Expression_Node, expr_kind, literal_expr);
+  GEN_KIND_CHECK(expr_kind);
 };
 
 struct Type_Node;

@@ -34,12 +34,9 @@ struct Typer {
     switch (node.decl_kind) {
       case Declaration_Node::Struct: return typecheck_struct(enclosing, node.struct_decl);
       case Declaration_Node::Lambda: return typecheck_lambda(enclosing, node.lambda_decl);
-      default: {
-        fin_ensure(false && "INCOMPLETE");
-      }
+      case Declaration_Node::Variable: { INCOMPLETE; return nullptr; }
+      case Declaration_Node::Constant: { INCOMPLETE; return nullptr; }
     }
-
-    return Typer_Error();
   }
 
   Result<void> typecheck () {
@@ -122,26 +119,32 @@ struct Typer {
       case Expression_Node::Literal: {
         auto &lit_node = expr.literal_expr;
 
-        if (lit_node.value.kind == Token::String_Literal) {
-          
-        }
-
-        if (lit_node.value.kind == Token::Integer_Literal) {
-          if (lit_node.is_signed) {
+        switch (lit_node.lit_kind) {
+          case Literal_Node::String: {
+            break;
+          }
+          case Literal_Node::Signed_Integer: {
             auto &value = lit_node.sint_value;
             
             if (value >= signed_min(8)  && value <= signed_max(8))  return Type(Basic_Types::s8_type);
             if (value >= signed_min(16) && value <= signed_max(16)) return Type(Basic_Types::s16_type);
             if (value >= signed_min(32) && value <= signed_max(32)) return Type(Basic_Types::s32_type);
             else                                                    return Type(Basic_Types::s64_type);
+
+            break;
           }
+          case Literal_Node::Unsigned_Integer: {
+            auto &value = lit_node.uint_value;
 
-          auto &value = lit_node.uint_value;
-
-          if (value <= static_cast<u8>(-1))  return Type(Basic_Types::u8_type);
-          if (value <= static_cast<u16>(-1)) return Type(Basic_Types::u16_type);
-          if (value <= static_cast<u32>(-1)) return Type(Basic_Types::u32_type);
-          else                               return Type(Basic_Types::u64_type);
+            if (value <= static_cast<u8>(-1))  return Type(Basic_Types::u8_type);
+            if (value <= static_cast<u16>(-1)) return Type(Basic_Types::u16_type);
+            if (value <= static_cast<u32>(-1)) return Type(Basic_Types::u32_type);
+            else                               return Type(Basic_Types::u64_type);
+            
+            break;
+          }
+          case Literal_Node::Float: { INCOMPLETE; break; }
+          case Literal_Node::Double: { INCOMPLETE; break; }
         }
         
         break;
@@ -273,17 +276,38 @@ struct Typer {
   Result<Fin::List<Entry>> transform_expression (Expression_Node &node) {
     
   }
-
+  
   Result<Entry> transform_statement (const Lambda_Binding &context, Statement_Node &node) {
     switch (node.stmnt_kind) {
       case Statement_Node::Return: {
-        try(expr_result_type, typecheck_expression(context.scope, node.return_stmnt.value));
+        auto &return_expr = node.return_stmnt.value;
+        
+        try(expr_result_type, typecheck_expression(context.scope, return_expr));
         if (!types_are_the_same(context.return_type, expr_result_type)) {
           if (!int_value_type_can_fit(context.return_type, expr_result_type))
             return Typer_Error();
         }
 
-        try(entries, transform_expression(node.return_stmnt.value));
+        if (return_expr == Expression_Node::Literal) {
+          auto &lit_expr = return_expr.literal_expr;
+          switch (lit_expr.lit_kind) {
+            case Literal_Node::String: { break; }
+
+            case Literal_Node::Unsigned_Integer:
+            case Literal_Node::Signed_Integer: {
+              return Entry(Return_Entry(Value(Immediate_Value {
+                .imm_kind = Immediate_Value::Integer,
+                .value    = lit_expr.uint_value,
+                .type     = expr_result_type
+              })));
+            }
+            
+            case Literal_Node::Float: { break; }
+            case Literal_Node::Double: { break; }
+          }
+        }
+
+        try(entries, transform_expression(return_expr));
         fin_ensure(entries.last != nullptr);
 
         auto &last = entries.last->value;

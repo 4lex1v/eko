@@ -57,6 +57,14 @@ enum struct Value_Kind: u8 {
 struct Immediate_Value {
   VALUE_KIND(Immediate);
 
+  enum Kind: u8 {
+    String,
+    Integer,
+    Float,
+    Double
+  };
+
+  Kind  imm_kind;
   usize value;
   Type  type;
 };
@@ -144,7 +152,6 @@ struct Value_Binding {
   struct Variable_Node *node;
 
   Type *type;
-  Type *init_expr_type;
 
   bool is_constant;
 };

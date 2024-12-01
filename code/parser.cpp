@@ -337,21 +337,24 @@ struct Parser {
     auto is_signed = eat(Token::Minus);
 
     if (looking_at(Token::Integer_Literal)) {
-      auto literal = Literal_Node { .value = *current };
+      Literal_Node literal {};
 
       if (is_signed) {
         try(value, parse_signed_integer(*current, true));  
+        literal.lit_kind = Literal_Node::Signed_Integer;
         literal.is_signed  = true;
         literal.sint_value = value;
       }
       else {
         auto [signed_error, svalue] = parse_signed_integer(*current, false);
         if (!signed_error) {
-          literal.is_signed  = true;
+          literal.lit_kind = Literal_Node::Signed_Integer;
+          literal.is_signed  = false;
           literal.sint_value = svalue.take();
         }
         else {
           try(uvalue, parse_unsigned_integer(*current));
+          literal.lit_kind = Literal_Node::Unsigned_Integer;
           literal.uint_value = uvalue;
         }
       }
@@ -362,8 +365,13 @@ struct Parser {
     }
 
     if (looking_at(Token::String_Literal)) {
-      auto literal = Literal_Node { .value = *current, .string_value = current->value };
+      auto literal = Literal_Node {
+        .lit_kind     = Literal_Node::String,
+        .string_value = current->value
+      };
+
       (void) advance();
+
       return Expression_Node(literal);
     }
 
