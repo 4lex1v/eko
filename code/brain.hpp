@@ -11,23 +11,26 @@
 struct Binding;
 struct Type_Binding;
 
-enum struct Type_Kind: u8 {
-  Basic_Void,
-  Basic_Bool,
-  Basic_Signed_Byte,
-  Basic_Unsigned_Byte,
-  Basic_Signed_Half_Word,
-  Basic_Unsigned_Half_Word,
-  Basic_Signed_Word,
-  Basic_Unsigned_Word,
-  Basic_Signed_Double_Word,
-  Basic_Unsigned_Double_Word,
+enum struct Built_In_Type: u8 {
+  Void,
+  Bool,
+  Signed_Byte,
+  Unsigned_Byte,
+  Signed_Half_Word,
+  Unsigned_Half_Word,
+  Signed_Word,
+  Unsigned_Word,
+  Signed_Double_Word,
+  Unsigned_Double_Word,
 
-  Basic_Float,
-  Basic_Double,
+  Float,
+  Double,
   
-  Basic_String_Literal,
+  String_Literal,
+};
 
+enum struct Type_Kind: u8 {
+  Built_In,
   Struct,
   Pointer,
   Array,
@@ -38,8 +41,68 @@ struct Type {
   using enum Type_Kind;
 
   Type_Kind kind;
+  Built_In_Type built_in_type;
   Type *element = nullptr;
   const Type_Binding *binding = nullptr;
+};
+
+enum struct Value_Kind: u8 {
+  Immediate,
+  Memory
+};
+
+struct Immediate_Value {
+  usize value;
+  Type  type;
+};
+
+struct Memory_Value {
+  
+};
+
+struct Value {
+  using enum Value_Kind;
+
+  Value_Kind kind;
+  union {
+    Immediate_Value immediate;
+    Memory_Value    memory;
+  };
+};
+
+struct Entry;
+
+enum struct Entry_Kind {
+  Load,
+  Store,
+  Call,
+  Return,
+};
+
+#define KIND_TAG(TYPE, KIND) static const auto kind = TYPE::KIND
+
+#define ENTRY_KIND(KIND) KIND_TAG(Entry_Kind, KIND)
+
+struct Return_Entry {
+  ENTRY_KIND(Return);
+
+  Fin::List<Entry> expr;
+};
+
+struct Entry {
+  using enum Entry_Kind;
+
+  Entry_Kind kind;
+  union {
+    Return_Entry return_entry;
+  };
+
+  template <typename T>
+  Entry (T value):
+    kind { T::kind }
+  {
+    new (&this->return_entry) T(Fin::move(value));
+  }
 };
 
 enum struct Binding_Kind {
@@ -77,6 +140,8 @@ struct Lambda_Binding {
 
   Fin::List<Value_Binding> params;
   Type return_type;
+
+  Fin::List<Entry> entries;
 };
 
 struct Binding {

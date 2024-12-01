@@ -1,7 +1,13 @@
 
 #pragma once
 
-#include "eko.hpp"
-#include "ast.hpp"
+#include "anyfin/result.hpp"
+#include "anyfin/arena.hpp"
 
-void codegen (const Source_File &file);
+#include "eko.hpp"
+
+struct Codegen_Error {
+  
+};
+
+Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source_File &file);

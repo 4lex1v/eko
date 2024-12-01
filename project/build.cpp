@@ -19,7 +19,7 @@ bool setup_project (const Arguments *args, Project *project) {
     add_source_file(target, "code/driver.cpp");
     add_source_file(target, "code/tokenizer.cpp");
     add_source_file(target, "code/parser.cpp");
-    add_source_file(target, "code/typer.cpp");
+    add_source_file(target, "code/brain.cpp");
     add_source_file(target, "code/llvm_codegen.cpp");
 
     add_compiler_option(target, "-DPLATFORM_WIN32");

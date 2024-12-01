@@ -8,10 +8,10 @@
 #include "anyfin/console.hpp"
 
 #include "eko.hpp"
+#include "brain.hpp"
 #include "codegen.hpp"
 #include "parser.hpp"
 #include "tokenizer.hpp"
-#include "typer.hpp"
 
 using Fin::Memory_Arena;
 
@@ -78,6 +78,9 @@ int main () {
 
   auto typer_error = typecheck(arena, unit);
   if (typer_error.is_error()) return 1;
+
+  auto [codegen_error] = codegen(arena, unit);
+  if (codegen_error) return 1;
 
   return 0;
 }

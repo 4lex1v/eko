@@ -5,22 +5,22 @@
 
 #include "eko.hpp"
 #include "ast.hpp"
-#include "typer.hpp"
+#include "brain.hpp"
 #include "utils.hpp"
 
 struct Basic_Types {
-  constexpr static auto void_type = Type { .kind = Type::Basic_Void };
-  constexpr static auto bool_type = Type { .kind = Type::Basic_Bool };
-
-  constexpr static auto s8_type   = Type { .kind = Type::Basic_Signed_Byte };
-  constexpr static auto s16_type  = Type { .kind = Type::Basic_Signed_Half_Word };
-  constexpr static auto s32_type  = Type { .kind = Type::Basic_Signed_Word };
-  constexpr static auto s64_type  = Type { .kind = Type::Basic_Signed_Double_Word };
-
-  constexpr static auto u8_type   = Type { .kind = Type::Basic_Unsigned_Byte };
-  constexpr static auto u16_type  = Type { .kind = Type::Basic_Unsigned_Half_Word };
-  constexpr static auto u32_type  = Type { .kind = Type::Basic_Unsigned_Word };
-  constexpr static auto u64_type  = Type { .kind = Type::Basic_Unsigned_Double_Word };
+  constexpr static auto void_type = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Void };
+  constexpr static auto bool_type = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Bool };
+  
+  constexpr static auto s8_type   = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Signed_Byte };
+  constexpr static auto s16_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Signed_Half_Word };
+  constexpr static auto s32_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Signed_Word };
+  constexpr static auto s64_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Signed_Double_Word };
+ 
+  constexpr static auto u8_type   = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Unsigned_Byte };
+  constexpr static auto u16_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Unsigned_Half_Word };
+  constexpr static auto u32_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Unsigned_Word };
+  constexpr static auto u64_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Unsigned_Double_Word };
 };
 
 static int64_t signed_min (int bits) { return -(1LL << (bits - 1)); }
@@ -220,68 +220,77 @@ struct Typer {
   }
 
   bool int_value_type_can_fit (const Type &storage_type, const Type &value_type) {
-    if (value_type.kind == Type::Basic_Signed_Byte) {
-      return ((storage_type.kind == Type::Basic_Signed_Byte) ||
-              (storage_type.kind == Type::Basic_Signed_Half_Word) ||
-              (storage_type.kind == Type::Basic_Signed_Word) ||
-              (storage_type.kind == Type::Basic_Signed_Double_Word));
+    if (storage_type.kind != Type::Built_In || value_type.kind != Type::Built_In)
+      return false;
+    
+    if (value_type.built_in_type == Built_In_Type::Signed_Byte) {
+      return ((storage_type.built_in_type == Built_In_Type::Signed_Byte) ||
+              (storage_type.built_in_type == Built_In_Type::Signed_Half_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Signed_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Signed_Double_Word));
     }
 
-    if (value_type.kind == Type::Basic_Signed_Half_Word) {
-      return ((storage_type.kind == Type::Basic_Signed_Half_Word) ||
-              (storage_type.kind == Type::Basic_Signed_Word) ||
-              (storage_type.kind == Type::Basic_Signed_Double_Word));
+    if (value_type.built_in_type == Built_In_Type::Signed_Half_Word) {
+      return ((storage_type.built_in_type == Built_In_Type::Signed_Half_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Signed_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Signed_Double_Word));
     }
 
-    if (value_type.kind == Type::Basic_Signed_Word) {
-      return ((storage_type.kind == Type::Basic_Signed_Word) ||
-              (storage_type.kind == Type::Basic_Signed_Double_Word));
+    if (value_type.built_in_type == Built_In_Type::Signed_Word) {
+      return ((storage_type.built_in_type == Built_In_Type::Signed_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Signed_Double_Word));
     }
 
-    if (value_type.kind == Type::Basic_Signed_Double_Word) {
-      return (storage_type.kind == Type::Basic_Signed_Double_Word);
+    if (value_type.built_in_type == Built_In_Type::Signed_Double_Word) {
+      return (storage_type.built_in_type == Built_In_Type::Signed_Double_Word);
     }
 
-    if (value_type.kind == Type::Basic_Unsigned_Byte) {
-      return ((storage_type.kind == Type::Basic_Unsigned_Byte) ||
-              (storage_type.kind == Type::Basic_Unsigned_Half_Word) ||
-              (storage_type.kind == Type::Basic_Unsigned_Word) ||
-              (storage_type.kind == Type::Basic_Unsigned_Double_Word));
+    if (value_type.built_in_type == Built_In_Type::Unsigned_Byte) {
+      return ((storage_type.built_in_type == Built_In_Type::Unsigned_Byte) ||
+              (storage_type.built_in_type == Built_In_Type::Unsigned_Half_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Unsigned_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Unsigned_Double_Word));
     }
 
-    if (value_type.kind == Type::Basic_Unsigned_Half_Word) {
-      return ((storage_type.kind == Type::Basic_Unsigned_Half_Word) ||
-              (storage_type.kind == Type::Basic_Unsigned_Word) ||
-              (storage_type.kind == Type::Basic_Unsigned_Double_Word));
+    if (value_type.built_in_type == Built_In_Type::Unsigned_Half_Word) {
+      return ((storage_type.built_in_type == Built_In_Type::Unsigned_Half_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Unsigned_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Unsigned_Double_Word));
     }
 
-    if (value_type.kind == Type::Basic_Unsigned_Word) {
-      return ((storage_type.kind == Type::Basic_Unsigned_Word) ||
-              (storage_type.kind == Type::Basic_Unsigned_Double_Word));
+    if (value_type.built_in_type == Built_In_Type::Unsigned_Word) {
+      return ((storage_type.built_in_type == Built_In_Type::Unsigned_Word) ||
+              (storage_type.built_in_type == Built_In_Type::Unsigned_Double_Word));
     }
 
-    if (value_type.kind == Type::Basic_Unsigned_Double_Word) {
-      return (storage_type.kind == Type::Basic_Unsigned_Double_Word);
+    if (value_type.built_in_type == Built_In_Type::Unsigned_Double_Word) {
+      return (storage_type.built_in_type == Built_In_Type::Unsigned_Double_Word);
     }
 
     return false;
   }
 
-  Result<void> typecheck_statement (const Lambda_Binding &context, Statement_Node &node) {
+  Result<Fin::List<Entry>> transform_expression (Expression_Node &node) {
+    
+  }
+
+  Result<Entry> typecheck_statement (const Lambda_Binding &context, Statement_Node &node) {
     switch (node.stmnt_kind) {
       case Statement_Node::Return: {
         try(expr_result_type, typecheck_expression(context.scope, node.return_stmnt.value));
 
         if (!types_are_the_same(context.return_type, expr_result_type)) {
-          if (int_value_type_can_fit(context.return_type, expr_result_type)) return Fin::Ok();
-          return Typer_Error();
+          if (!int_value_type_can_fit(context.return_type, expr_result_type))
+            return Typer_Error();
         }
 
-        break;
+        try(entries, transform_expression(node.return_stmnt.value));
+
+        return Entry(Return_Entry(entries));
       }
     }
 
-    return Fin::Ok();
+    return Typer_Error();
   }
 
   Result<Binding *> typecheck_lambda (Scope &enclosing, Lambda_Node &lambda_node) {
