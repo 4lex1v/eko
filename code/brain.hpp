@@ -7,6 +7,7 @@
 
 #include "eko.hpp"
 #include "ast.hpp"
+#include "utils.hpp"
 
 struct Binding;
 struct Type_Binding;
@@ -51,13 +52,36 @@ enum struct Value_Kind: u8 {
   Memory
 };
 
+#define VALUE_KIND(KIND) KIND_TAG(Value_Kind, KIND)
+
 struct Immediate_Value {
+  VALUE_KIND(Immediate);
+
   usize value;
   Type  type;
 };
 
+struct Load_Entry;
+struct Access_Entry;
+
+enum struct Memory_Value_Kind: u8 {
+  Access,
+  Load
+};
+
+/*
+  Could be a result of a function call, if it returns a value, or a be a load operation
+ */
 struct Memory_Value {
+  using enum Memory_Value_Kind;
   
+  VALUE_KIND(Memory);
+
+  Memory_Value_Kind mem_kind;
+  union {
+    const Access_Entry *access_entry;
+    const Load_Entry   *load_entry;
+  };
 };
 
 struct Value {
@@ -68,25 +92,30 @@ struct Value {
     Immediate_Value immediate;
     Memory_Value    memory;
   };
+
+  GEN_CONSTRUCTOR(Value, kind, immediate);
 };
 
 struct Entry;
 
 enum struct Entry_Kind {
+  Access,
   Load,
   Store,
   Call,
   Return,
 };
 
-#define KIND_TAG(TYPE, KIND) static const auto kind = TYPE::KIND
-
 #define ENTRY_KIND(KIND) KIND_TAG(Entry_Kind, KIND)
+
+struct Load_Entry {
+  ENTRY_KIND(Load);
+};
 
 struct Return_Entry {
   ENTRY_KIND(Return);
 
-  Fin::List<Entry> expr;
+  Value value;
 };
 
 struct Entry {
@@ -95,14 +124,10 @@ struct Entry {
   Entry_Kind kind;
   union {
     Return_Entry return_entry;
+    Load_Entry   load_entry;
   };
 
-  template <typename T>
-  Entry (T value):
-    kind { T::kind }
-  {
-    new (&this->return_entry) T(Fin::move(value));
-  }
+  GEN_CONSTRUCTOR(Entry, kind, return_entry);
 };
 
 enum struct Binding_Kind {
@@ -111,8 +136,7 @@ enum struct Binding_Kind {
   Lambda
 };
 
-#define BINDING_KIND(KIND) \
-    static const auto kind = Binding_Kind::KIND;
+#define BINDING_KIND(KIND) KIND_TAG(Binding_Kind, KIND);
 
 struct Value_Binding {
   BINDING_KIND(Value);
@@ -154,12 +178,7 @@ struct Binding {
     Lambda_Binding lambda_binding;
   };
 
-  template <typename T>
-  Binding (T value):
-    kind { T::kind }
-  {
-    new (&this->value_binding) T(Fin::move(value));
-  }
+  GEN_CONSTRUCTOR(Binding, kind, value_binding);
 };
 
 struct Typer_Error {

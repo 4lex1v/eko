@@ -119,16 +119,11 @@ Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source
             switch (entry.kind) {
               case Entry::Return: {
                 auto &ret_entry = entry.return_entry;
-
-                for (auto &entry: ret_entry.expr) {
-                  
-                }
-
                 auto &ret_value = ret_entry.value;
                 
                 switch (ret_value.kind) {
                   case Value::Immediate: {
-                    auto value_type = get_llvm_type(unit, *ret_value.immediate.type);
+                    auto value_type = get_llvm_type(unit, ret_value.immediate.type);
                     LLVMBuildRet(builder, LLVMConstInt(value_type, ret_value.immediate.value, false));    
                     break;
                   }

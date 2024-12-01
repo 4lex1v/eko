@@ -274,19 +274,26 @@ struct Typer {
     
   }
 
-  Result<Entry> typecheck_statement (const Lambda_Binding &context, Statement_Node &node) {
+  Result<Entry> transform_statement (const Lambda_Binding &context, Statement_Node &node) {
     switch (node.stmnt_kind) {
       case Statement_Node::Return: {
         try(expr_result_type, typecheck_expression(context.scope, node.return_stmnt.value));
-
         if (!types_are_the_same(context.return_type, expr_result_type)) {
           if (!int_value_type_can_fit(context.return_type, expr_result_type))
             return Typer_Error();
         }
 
         try(entries, transform_expression(node.return_stmnt.value));
+        fin_ensure(entries.last != nullptr);
 
-        return Entry(Return_Entry(entries));
+        auto &last = entries.last->value;
+        switch (last.kind) {
+          case Entry::Load: return Entry(Return_Entry(Value(Memory_Value {
+            .mem_kind   = Memory_Value::Load,
+            .load_entry = static_cast<Load_Entry *>(&last.load_entry)
+          })));
+          default: return Typer_Error();
+        }
       }
     }
 
@@ -295,7 +302,7 @@ struct Typer {
 
   Result<Binding *> typecheck_lambda (Scope &enclosing, Lambda_Node &lambda_node) {
     auto binding = new (arena) Binding(Lambda_Binding {
-      .node = &lambda_node,
+      .node  = &lambda_node,
       .scope = Scope(arena, &enclosing),
     });
     auto &lambda_binding = binding->lambda_binding;
@@ -320,7 +327,7 @@ struct Typer {
           break;
         }
         case Node::Statement: {
-          typecheck_statement(lambda_binding, node.stmnt_node);
+          transform_statement(lambda_binding, node.stmnt_node);
           break;
         }
         case Node::Expression: {
