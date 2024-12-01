@@ -4,6 +4,7 @@
 #include "anyfin/list.hpp"
 #include "anyfin/arena.hpp"
 #include "anyfin/result.hpp"
+#include "anyfin/bit_mask.hpp"
 
 #include "eko.hpp"
 #include "ast.hpp"
@@ -14,19 +15,8 @@ struct Type_Binding;
 
 enum struct Built_In_Type: u8 {
   Void,
-  Bool,
-  Signed_Byte,
-  Unsigned_Byte,
-  Signed_Half_Word,
-  Unsigned_Half_Word,
-  Signed_Word,
-  Unsigned_Word,
-  Signed_Double_Word,
-  Unsigned_Double_Word,
-
-  Float,
-  Double,
-  
+  Integer,
+  Floating,
   String_Literal,
 };
 
@@ -38,13 +28,32 @@ enum struct Type_Kind: u8 {
   Seq
 };
 
+enum struct Type_Flags {
+  // Numeric Flags
+  Unsigned    = fin_flag(0),
+  Bit         = fin_flag(1),
+  Byte        = fin_flag(2),
+  Half_Word   = fin_flag(3),
+  Word        = fin_flag(4),
+  Double_Word = fin_flag(5),
+
+  // Floating Flags
+  Double      = fin_flag(0),
+};
+
 struct Type {
   using enum Type_Kind;
 
   Type_Kind kind;
   Built_In_Type built_in_type;
+
+  Fin::Bit_Mask<Type_Flags> flags;
+
   Type *element = nullptr;
   const Type_Binding *binding = nullptr;
+
+  GEN_KIND_CHECK(kind);
+  GEN_KIND_CHECK(built_in_type);
 };
 
 enum struct Value_Kind: u8 {

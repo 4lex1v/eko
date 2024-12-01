@@ -7,6 +7,7 @@
 -DAPI_VERSION=0
 -I.
 -I./libs
+-I./libs/llvm/include
 -I./code
 -Wno-alloca
 -Wno-unused-function

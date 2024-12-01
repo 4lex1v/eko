@@ -20,8 +20,8 @@ struct Bit_Mask {
   fin_forceinline constexpr bool        is_set (this auto self, E value) { return self & value; }
 };
 
+}
+
 template <typename E>
 fin_forceinline
-constexpr Bit_Mask<E> operator | (E left, E right) { return Bit_Mask(left) | right; }
-
-}
+constexpr Fin::Bit_Mask<E> operator | (E left, E right) { return Fin::Bit_Mask(left) | right; }

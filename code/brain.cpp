@@ -2,6 +2,7 @@
 #include "anyfin/hash_table.hpp"
 #include "anyfin/result.hpp"
 #include "anyfin/option.hpp"
+#include "anyfin/bit_mask.hpp"
 
 #include "eko.hpp"
 #include "ast.hpp"
@@ -9,18 +10,21 @@
 #include "utils.hpp"
 
 struct Basic_Types {
-  constexpr static auto void_type = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Void };
-  constexpr static auto bool_type = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Bool };
+  using enum Type_Flags;
   
-  constexpr static auto s8_type   = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Signed_Byte };
-  constexpr static auto s16_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Signed_Half_Word };
-  constexpr static auto s32_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Signed_Word };
-  constexpr static auto s64_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Signed_Double_Word };
+  constexpr static auto void_type = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Void };
+
+  constexpr static auto bool_type = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Unsigned | Bit };
+
+  constexpr static auto s8_type   = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Byte };
+  constexpr static auto s16_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Half_Word };
+  constexpr static auto s32_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Word };
+  constexpr static auto s64_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Double_Word };
  
-  constexpr static auto u8_type   = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Unsigned_Byte };
-  constexpr static auto u16_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Unsigned_Half_Word };
-  constexpr static auto u32_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Unsigned_Word };
-  constexpr static auto u64_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Unsigned_Double_Word };
+  constexpr static auto u8_type   = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Unsigned | Byte };
+  constexpr static auto u16_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Unsigned | Half_Word };
+  constexpr static auto u32_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Unsigned | Word };
+  constexpr static auto u64_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Unsigned | Double_Word };
 };
 
 static int64_t signed_min (int bits) { return -(1LL << (bits - 1)); }
@@ -203,7 +207,8 @@ struct Typer {
   }
 
   bool types_are_the_same (const Type &left, const Type &right) {
-    if (left.kind != right.kind) return false;
+    if (left.kind != right.kind)                   return false;
+    if (left.built_in_type != right.built_in_type) return false;
 
     if (left.kind == Type::Pointer || left.kind == Type::Seq)
       return types_are_the_same(*left.element, *right.element);
@@ -215,62 +220,21 @@ struct Typer {
 
     if (left.kind == Type::Struct) return left.binding == right.binding;
 
-    /*
-      These are basic the same basic types...?
-      TODO: An interesting question is how to deal with upcasts?
-     */
-    return true;
+    fin_ensure(left == Type::Built_In);
+    fin_ensure(right == Type::Built_In);
+
+    return left.flags.bit_mask == right.flags.bit_mask;
   }
 
   bool int_value_type_can_fit (const Type &storage_type, const Type &value_type) {
-    if (storage_type.kind != Type::Built_In || value_type.kind != Type::Built_In)
-      return false;
-    
-    if (value_type.built_in_type == Built_In_Type::Signed_Byte) {
-      return ((storage_type.built_in_type == Built_In_Type::Signed_Byte) ||
-              (storage_type.built_in_type == Built_In_Type::Signed_Half_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Signed_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Signed_Double_Word));
-    }
+    fin_ensure(storage_type == Built_In_Type::Integer);
+    fin_ensure(value_type == Built_In_Type::Integer);
 
-    if (value_type.built_in_type == Built_In_Type::Signed_Half_Word) {
-      return ((storage_type.built_in_type == Built_In_Type::Signed_Half_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Signed_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Signed_Double_Word));
-    }
+    using enum Type_Flags;
 
-    if (value_type.built_in_type == Built_In_Type::Signed_Word) {
-      return ((storage_type.built_in_type == Built_In_Type::Signed_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Signed_Double_Word));
-    }
+    if (storage_type.flags.is_set(Unsigned) != value_type.flags.is_set(Unsigned)) return false;
 
-    if (value_type.built_in_type == Built_In_Type::Signed_Double_Word) {
-      return (storage_type.built_in_type == Built_In_Type::Signed_Double_Word);
-    }
-
-    if (value_type.built_in_type == Built_In_Type::Unsigned_Byte) {
-      return ((storage_type.built_in_type == Built_In_Type::Unsigned_Byte) ||
-              (storage_type.built_in_type == Built_In_Type::Unsigned_Half_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Unsigned_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Unsigned_Double_Word));
-    }
-
-    if (value_type.built_in_type == Built_In_Type::Unsigned_Half_Word) {
-      return ((storage_type.built_in_type == Built_In_Type::Unsigned_Half_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Unsigned_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Unsigned_Double_Word));
-    }
-
-    if (value_type.built_in_type == Built_In_Type::Unsigned_Word) {
-      return ((storage_type.built_in_type == Built_In_Type::Unsigned_Word) ||
-              (storage_type.built_in_type == Built_In_Type::Unsigned_Double_Word));
-    }
-
-    if (value_type.built_in_type == Built_In_Type::Unsigned_Double_Word) {
-      return (storage_type.built_in_type == Built_In_Type::Unsigned_Double_Word);
-    }
-
-    return false;
+    return value_type.flags.bit_mask <= storage_type.flags.bit_mask;  
   }
 
   Result<Fin::List<Entry>> transform_expression (Expression_Node &node) {
@@ -284,8 +248,14 @@ struct Typer {
         
         try(expr_result_type, typecheck_expression(context.scope, return_expr));
         if (!types_are_the_same(context.return_type, expr_result_type)) {
-          if (!int_value_type_can_fit(context.return_type, expr_result_type))
-            return Typer_Error();
+          // TODO: Perhaps we would have to extend this at some later point
+          if (expr_result_type != Built_In_Type::Integer)                     return Typer_Error();
+          if (!int_value_type_can_fit(context.return_type, expr_result_type)) return Typer_Error();
+            
+          /*
+            We need to upcast the number according to the declared return type.
+          */
+          expr_result_type = context.return_type;
         }
 
         if (return_expr == Expression_Node::Literal) {
@@ -351,7 +321,8 @@ struct Typer {
           break;
         }
         case Node::Statement: {
-          transform_statement(lambda_binding, node.stmnt_node);
+          try(entry, transform_statement(lambda_binding, node.stmnt_node));
+          list_push(arena, lambda_binding.entries, Fin::move(entry));
           break;
         }
         case Node::Expression: {

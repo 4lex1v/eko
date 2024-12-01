@@ -43,24 +43,21 @@ static void init_llvm_generator() {
 }
 
 static LLVMTypeRef get_llvm_type (LLVMModuleRef module, const Type &type) {
+  using enum Type_Flags;
+
+  auto context = LLVMGetModuleContext(module);
+  
   switch (type.kind) {
     case Type::Built_In: {
-      switch (type.built_in_type) {
-        case Built_In_Type::Void:                 return LLVMVoidType();
-        case Built_In_Type::Bool:                 return LLVMInt1Type();
-        case Built_In_Type::Signed_Byte:          return LLVMInt8Type();
-        case Built_In_Type::Unsigned_Byte:        return LLVMInt8Type();
-        case Built_In_Type::Signed_Half_Word:     return LLVMInt16Type();
-        case Built_In_Type::Unsigned_Half_Word:   return LLVMInt16Type();
-        case Built_In_Type::Signed_Word:          return LLVMInt32Type();
-        case Built_In_Type::Unsigned_Word:        return LLVMInt32Type();
-        case Built_In_Type::Signed_Double_Word:   return LLVMInt64Type();
-        case Built_In_Type::Unsigned_Double_Word: return LLVMInt64Type();
-        case Built_In_Type::Float:                return LLVMFloatType();
-        case Built_In_Type::Double:               return LLVMDoubleType();
-        case Built_In_Type::String_Literal:       return LLVMPointerType(LLVMInt8Type(), 0);
-      }
-      break;
+      if (type == Built_In_Type::Void)                                      return LLVMVoidTypeInContext(context);
+      if (type == Built_In_Type::Integer && type.flags.is_set(Bit))         return LLVMInt1TypeInContext(context);
+      if (type == Built_In_Type::Integer && type.flags.is_set(Byte))        return LLVMInt8TypeInContext(context);
+      if (type == Built_In_Type::Integer && type.flags.is_set(Half_Word))   return LLVMInt16TypeInContext(context);
+      if (type == Built_In_Type::Integer && type.flags.is_set(Word))        return LLVMInt32TypeInContext(context);
+      if (type == Built_In_Type::Integer && type.flags.is_set(Double_Word)) return LLVMInt64TypeInContext(context);
+      if (type == Built_In_Type::Floating && type.flags.is_set(Double))     return LLVMDoubleTypeInContext(context);
+      if (type == Built_In_Type::Floating)                                  return LLVMDoubleTypeInContext(context);
+      if (type == Built_In_Type::String_Literal)                            return LLVMPointerType(LLVMInt8TypeInContext(context), 0);
     }
     case Type::Struct: {
       break;
@@ -92,6 +89,8 @@ Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source
   LLVMSetTarget(unit, target_triple);
   LLVMSetDataLayout(unit, data_layout_str);
 
+  auto builder = LLVMCreateBuilderInContext(llvm_context);
+
   for (auto &decl: file.top_level) {
     switch (decl->kind) {
       case Binding::Lambda: {
@@ -101,50 +100,43 @@ Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source
         auto return_type = get_llvm_type(unit, lambda.return_type);
 
         auto params_count = lambda.params.count;
-        auto params       = reinterpret_cast<LLVMTypeRef *>(alloca(params_count * sizeof(LLVMTypeRef)));
+        auto params       = params_count ? reinterpret_cast<LLVMTypeRef *>(alloca(params_count * sizeof(LLVMTypeRef))) : nullptr;
 
         auto function_type = LLVMFunctionType(return_type, params, params_count, false);
         auto function      = LLVMAddFunction(unit, name.value, function_type);
 
+        auto block = LLVMAppendBasicBlockInContext(llvm_context, function, "entry");
+        LLVMPositionBuilderAtEnd(builder, block);
+
         auto it = lambda.entries.first;
         while (it) {
-          auto block = LLVMAppendBasicBlock(function, nullptr);
+          auto &entry = it->value;
 
-          auto builder = LLVMCreateBuilder();
-          LLVMPositionBuilderAtEnd(builder, block);
-
-          while (it) {
-            auto &entry = it->value;
-
-            switch (entry.kind) {
-              case Entry::Return: {
-                auto &ret_entry = entry.return_entry;
-                auto &ret_value = ret_entry.value;
+          switch (entry.kind) {
+            case Entry::Return: {
+              auto &ret_entry = entry.return_entry;
+              auto &ret_value = ret_entry.value;
                 
-                switch (ret_value.kind) {
-                  case Value::Immediate: {
-                    auto value_type = get_llvm_type(unit, ret_value.immediate.type);
-                    LLVMBuildRet(builder, LLVMConstInt(value_type, ret_value.immediate.value, false));    
-                    break;
-                  }
-                  case Value::Memory: {
-                    fin_ensure(false && "UNIMPLEMENTED");
-                    break;
-                  }
+              switch (ret_value.kind) {
+                case Value::Immediate: {
+                  auto value_type = get_llvm_type(unit, ret_value.immediate.type);
+                  LLVMBuildRet(builder, LLVMConstInt(value_type, ret_value.immediate.value, false));    
+                  break;
                 }
-                
-                
-
-                break;
+                case Value::Memory: {
+                  fin_ensure(false && "UNIMPLEMENTED");
+                  break;
+                }
               }
-            }
 
-            it = it->next;
+              break;
+            }
           }
 
-          LLVMDisposeBuilder(builder);
+          it = it->next;
         }
 
+        LLVMDisposeBuilder(builder);
 
         break;
       }
