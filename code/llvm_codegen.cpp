@@ -7,6 +7,7 @@
 
 #include "anyfin/memory.hpp"
 #include "anyfin/prelude.hpp"
+#include "anyfin/defer.hpp"
 
 #include "eko.hpp"
 #include "ast.hpp"
@@ -94,16 +95,24 @@ Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source
   for (auto &decl: file.top_level) {
     switch (decl->kind) {
       case Binding::Lambda: {
+        auto offset = arena.offset;
+        defer { arena.offset = offset; }; // Reset all allocations 
+
         auto &lambda = decl->lambda_binding;
         auto &name   = lambda.node->name;
+        fin_ensure(is_empty(name.value) == false);
         
         auto return_type = get_llvm_type(unit, lambda.return_type);
 
         auto params_count = lambda.params.count;
-        auto params       = params_count ? reinterpret_cast<LLVMTypeRef *>(alloca(params_count * sizeof(LLVMTypeRef))) : nullptr;
+        auto params       = new (arena) LLVMTypeRef[params_count];
 
         auto function_type = LLVMFunctionType(return_type, params, params_count, false);
-        auto function      = LLVMAddFunction(unit, name.value, function_type);
+
+        auto cname = new (arena) char[name.value.length + 1];
+        memcpy(cname, name.value.value, name.value.length);
+        cname[name.value.length] = '\0';
+        auto function = LLVMAddFunction(unit, cname, function_type);
 
         auto block = LLVMAppendBasicBlockInContext(llvm_context, function, "entry");
         LLVMPositionBuilderAtEnd(builder, block);
@@ -153,6 +162,11 @@ Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source
   else {
     auto ir_string = LLVMPrintModuleToString(unit);
     LLVMDisposeMessage(ir_string);
+  }
+
+  auto pass_manager = LLVMCreatePassManager();
+  if (LLVMTargetMachineEmitToFile(target_machine, unit, "output.o", LLVMObjectFile, &error_message)) {
+    LLVMDisposeMessage(error_message);
   }
 
   LLVMDisposeMessage(data_layout_str);

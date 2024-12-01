@@ -43,8 +43,7 @@ struct Memory_Arena {
 
 template <typename T = u8>
 static T * reserve (Memory_Arena &arena, usize size = sizeof(T), usize alignment = alignof(T)) {
-  fin_ensure(size > 0);
-  fin_ensure(alignment > 0);
+  if (size == 0 || alignment == 0) return nullptr;
   
   auto base         = arena.memory + arena.offset;
   auto aligned_base = align_forward(base, alignment);
