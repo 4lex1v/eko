@@ -1,4 +1,18 @@
 
+DWORD :: u32 
+HANDLE :: *Any
+
+STD_OUTPUT_HANDLE :: -11 as DWORD
+
+GetStdHandle :: extern (std_handle: DWORD) HANDLE
+WriteFile    :: extern (file: HANDLE, buffer: *Any, bytes_to_write: DWORD, bytes_written: *DWORD, overlapped: *Any = null) bool
+
 main :: () s32 {
-  return 123
+  message :: "Hello, World\n"
+
+  written: DWORD
+  handle := GetStdHandle(STD_OUTPUT_HANDLE)  
+  status := WriteFile(handle, message, message.length, written)
+  
+  return 0 if status else 1
 }
