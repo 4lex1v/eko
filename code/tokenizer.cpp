@@ -85,9 +85,17 @@ struct Tokenizer {
     }
 
     auto value = Fin::String(value_start, current - value_start);
-    if (value == "return") return make_token(Token::Return);
     if (value == "struct") return make_token(Token::Struct);
+    if (value == "return") return make_token(Token::Return);
     if (value == "use")    return make_token(Token::Use);
+    if (value == "and")    return make_token(Token::And);
+    if (value == "or")     return make_token(Token::Or);
+    if (value == "false")  return make_token(Token::False);
+    if (value == "true")   return make_token(Token::True);
+    if (value == "if")     return make_token(Token::If);
+    if (value == "else")   return make_token(Token::Else);
+    if (value == "as")     return make_token(Token::As);
+    if (value == "extern") return make_token(Token::Extern);
 
     auto first_char = value[0];
     if (is_numeric(first_char))                     return invalid_token();
@@ -166,28 +174,36 @@ struct Tokenizer {
 
     if (looking_at('\0')) return make_token(Token::Last);
 
-    if (is_numeric(*current))                  return read_numeric_token();
-    if (looking_at('"'))                       return read_string_literal();
+    if (is_numeric(*current)) return read_numeric_token();
+    if (looking_at('"'))      return read_string_literal();
 
+#define return_token(TOKEN)                     \
+    do {                                        \
+      auto token = make_token(TOKEN);           \
+      (void) advance();                         \
+      return token;                             \
+    } while (0)
+    
     switch (*current) {
-      case '\r': return make_token(Token::CR);
-      case '\n': return make_token(Token::Newline);
-      case ':':  return make_token(Token::Colon);
-      case '(':  return make_token(Token::Open_Round_Bracket);
-      case ')':  return make_token(Token::Close_Round_Bracket);
-      case '[':  return make_token(Token::Open_Square_Bracket);
-      case ']':  return make_token(Token::Close_Square_Bracket);
-      case '{':  return make_token(Token::Open_Curly_Bracket);
-      case '}':  return make_token(Token::Close_Curly_Bracket);
-      case ',':  return make_token(Token::Coma);
-      case ';':  return make_token(Token::Semicolon);
-      case '=':  return make_token(Token::Equal);
-      case '.':  return make_token(Token::Period);
-      case '+':  return make_token(Token::Plus);
-      case '-':  return make_token(Token::Minus);
-      case '*':  return make_token(Token::Star);
-      case '_':  return make_token(Token::Underscore);
+      case '\r': return_token(Token::CR);
+      case '\n': return_token(Token::Newline); 
+      case ':':  return_token(Token::Colon);
+      case '(':  return_token(Token::Open_Round_Bracket);
+      case ')':  return_token(Token::Close_Round_Bracket);
+      case '[':  return_token(Token::Open_Square_Bracket);
+      case ']':  return_token(Token::Close_Square_Bracket);
+      case '{':  return_token(Token::Open_Curly_Bracket); 
+      case '}':  return_token(Token::Close_Curly_Bracket);
+      case ',':  return_token(Token::Coma);
+      case ';':  return_token(Token::Semicolon);
+      case '=':  return_token(Token::Equal);
+      case '.':  return_token(Token::Period);
+      case '+':  return_token(Token::Plus);
+      case '-':  return_token(Token::Minus);
+      case '*':  return_token(Token::Star);
+      case '_':  return_token(Token::Underscore); 
     }
+#undef return_token
 
     return read_symbolic_token();
   }
@@ -204,9 +220,7 @@ Tokenizer_Status read_tokens (Fin::Memory_Arena &arena, Source_File &unit) {
     *reserve<Token>(arena) = token; 
     tokens_count += 1;
 
-    if (token.kind == Token::Last) break;
-
-    (void) tokenizer.advance();
+    if (token == Token::Last) break;
   }
 
   unit.tokens = Fin::Array(tokens, tokens_count);

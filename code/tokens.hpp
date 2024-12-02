@@ -34,6 +34,10 @@ enum struct Token_Kind: u8 {
   Or,
   False,
   True,
+  If,
+  Else,
+  As,
+  Extern,
 
   CR,
   Newline,
