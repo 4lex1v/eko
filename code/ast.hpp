@@ -4,6 +4,7 @@
 #include "anyfin/array.hpp"
 #include "anyfin/list.hpp"
 #include "anyfin/meta.hpp"
+#include "anyfin/bit_mask.hpp"
 
 #include "eko.hpp"
 #include "tokens.hpp"
@@ -14,6 +15,7 @@ struct Struct_Binding;
 struct Lambda_Binding;
 
 struct Node;
+struct Type_Node;
 
 enum struct Node_Kind: u8 {
   Expression,
@@ -31,7 +33,10 @@ enum struct Expression_Node_Kind: u8 {
   Member_Access,
   Literal,
   Function_Call,
-  Binary_Expr
+  Binary_Expr,
+  Star_Expr,
+  As_Cast,
+  Post_If_Expr,
 };
 
 #define EXPR_KIND(KIND) \
@@ -42,7 +47,8 @@ enum struct Literal_Node_Kind: u8 {
   Signed_Integer,
   Unsigned_Integer,
   Float,
-  Double
+  Double,
+  Null
 };
 
 struct Literal_Node {
@@ -91,6 +97,27 @@ struct Binary_Expr_Node {
   Expression_Node *right;
 };
 
+struct Star_Expr_Node {
+  EXPR_KIND(Star_Expr);
+
+  Expression_Node *expr;
+};
+
+struct As_Cast_Expr_Node {
+  EXPR_KIND(As_Cast);
+
+  Expression_Node *expr;
+  Type_Node       *type_node;
+};
+
+struct Post_If_Expr_Node {
+  EXPR_KIND(Post_If_Expr);
+
+  Expression_Node *condition;
+  Expression_Node *position_branch;
+  Expression_Node *negative_branch;
+};
+
 struct Expression_Node {
   using enum Expression_Node_Kind;
 
@@ -103,6 +130,9 @@ struct Expression_Node {
     Member_Access_Node member_access_expr;
     Function_Call_Node function_call_expr;
     Binary_Expr_Node   binary_expr;
+    Star_Expr_Node     star_expr;
+    As_Cast_Expr_Node  as_cast_expr;
+    Post_If_Expr_Node  post_if_expr;
   };
 
   GEN_CONSTRUCTOR(Expression_Node, expr_kind, literal_expr);
@@ -151,7 +181,6 @@ struct Type_Node {
   using enum Type_Node_Kind;
 
   Type_Node_Kind type_kind;
-
   union {
     Plain_Type_Node   plain_type;
     Pointer_Type_Node pointer_type;
@@ -159,12 +188,8 @@ struct Type_Node {
     Seq_Type_Node     seq_type;
   };
 
-  template <typename T>
-  Type_Node (T value):
-    type_kind { T::kind }
-  {
-    new (&plain_type) T(Fin::move(value));
-  }
+  GEN_CONSTRUCTOR(Type_Node, type_kind, plain_type);
+  GEN_KIND_CHECK(type_kind);
 };
 
 struct Declaration_Node;
@@ -207,6 +232,10 @@ struct Struct_Node {
   Struct_Binding *binding = nullptr;
 };
 
+enum struct Lambda_Node_Flags {
+  Extern_Decl = fin_flag(0),
+};
+
 struct Lambda_Node {
   DECL_KIND(Lambda);
 
@@ -217,7 +246,7 @@ struct Lambda_Node {
 
   Type_Node *return_type = nullptr;
 
-  Lambda_Binding *binding = nullptr;
+  Fin::Bit_Mask<Lambda_Node_Flags> flags {};
 };
 
 struct Declaration_Node {

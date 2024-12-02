@@ -300,9 +300,7 @@ struct Typer {
       .scope = Scope(arena, &enclosing),
     });
     auto &lambda_binding = binding->lambda_binding;
-    lambda_node.binding = &lambda_binding;
-
-    auto &scope = lambda_binding.scope;
+    auto &scope          = lambda_binding.scope;
     
     for (auto &param: lambda_node.params) {
       try(var_binding, typecheck_variable(enclosing, param));

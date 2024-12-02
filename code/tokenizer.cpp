@@ -96,6 +96,7 @@ struct Tokenizer {
     if (value == "else")   return make_token(Token::Else);
     if (value == "as")     return make_token(Token::As);
     if (value == "extern") return make_token(Token::Extern);
+    if (value == "null")   return make_token(Token::Null);
 
     auto first_char = value[0];
     if (is_numeric(first_char))                     return invalid_token();

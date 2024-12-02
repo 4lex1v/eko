@@ -38,6 +38,7 @@ enum struct Token_Kind: u8 {
   Else,
   As,
   Extern,
+  Null,
 
   CR,
   Newline,

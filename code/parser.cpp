@@ -109,14 +109,18 @@ struct Parser {
     }
   }
 
-  template <typename T>
-  Result<List<T>> parse_sequence_within(Token_Kind open, Token_Kind close, Result<T> (Parser::*func) ()) {
+  template <typename T, usize N>
+  Result<List<T>> parse_sequence_within(Token_Kind open, Token_Kind close, const Token_Kind (&separators)[N], Result<T> (Parser::*func) ()) {
     List<T> nodes;
 
     if (eat(open)) {
       parse_until(close) {
         try(value, (this->*func)());
         list_push(arena, nodes, Fin::move(value));
+        for (auto &sep: separators) {
+          if (current == sep && !advance())
+            return unexpected_token(Token::Last);
+        }
       }
 
       if (!eat(close)) return unexpected_token(close);
@@ -150,7 +154,7 @@ struct Parser {
     auto plain_type = Plain_Type_Node(*current);
     if (!advance()) return unexpected_token(Token::Last);
 
-    try(type_params, parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, &Parser::parse_type));
+    try(type_params, parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, { Token::Coma }, &Parser::parse_type));
     plain_type.parameters = type_params;
 
     return Type_Node(plain_type);
@@ -158,18 +162,23 @@ struct Parser {
 
   Result<Variable_Node> parse_parameter () {
     auto param_name = *current;
-    if (!advance()) return unexpected_token(Token::Last);
 
+    if (!advance())         return unexpected_token(Token::Last);
     if (!eat(Token::Colon)) return unexpected_token(Token::Colon);
 
+    Type_Node *type = nullptr;
     if (!looking_at(Token::Equal)) {
-      try(var_type, parse_type())
-      return Variable_Node(param_name, new_node(var_type));
+      try(var_type, parse_type());
+      type = new_node(var_type);
     }
 
-    try(init_expr, parse_expression());
+    Expression_Node *expr = nullptr;
+    if (eat(Token::Equal)) {
+      try(init_expr, parse_expression());  
+      expr = new_node(init_expr);
+    }
 
-    return Variable_Node(param_name, nullptr, new_node(init_expr));
+    return Variable_Node(param_name, type, expr);
   }
 
   Result<s64> parse_signed_integer (const Token &token, bool is_negative) {
@@ -332,9 +341,28 @@ struct Parser {
     return unsigned_value;
   }
 
+  Result<Expression_Node> try_parse_expr_path () {
+    Expression_Node node = Identifier_Node(*current);
+    if (!advance()) return unexpected_token(Token::Last);
+
+    while (eat(Token::Period)) {
+      ensure_token(Token::Symbol);
+
+      node = Expression_Node(Member_Access_Node {
+          .expr   = new_node(node),
+          .member = *current
+        });
+
+      (void) advance();
+    }
+
+    return node;
+  }
   
   Result<Expression_Node> parse_unary_expression () {
-    auto is_signed = eat(Token::Minus);
+    if (eat(Token::Null)) return Expression_Node(Literal_Node(Literal_Node::Null, {}));
+
+    auto is_signed = eat(Token::Minus) || eat(Token::Plus);
 
     if (looking_at(Token::Integer_Literal)) {
       Literal_Node literal {};
@@ -358,7 +386,7 @@ struct Parser {
           literal.uint_value = uvalue;
         }
       }
-      
+
       (void) advance();
 
       return Expression_Node(literal);
@@ -373,6 +401,15 @@ struct Parser {
       (void) advance();
 
       return Expression_Node(literal);
+    }
+
+    /*
+      Depending on the context this may be either a pointer dereference or a part of type alias declaration.
+      For example: HANDLE :: *Any, the '*Any' part would be parsed as an expression yeilding the type value at compile time
+    */
+    if (eat(Token::Star)) {
+      try(sub_expr, parse_unary_expression());
+      return Expression_Node(Star_Expr_Node(new_node(sub_expr)));
     }
 
     ensure_token(Token::Symbol);
@@ -391,8 +428,8 @@ struct Parser {
       (void) advance();
     }
 
-    if (eat(Token::Open_Round_Bracket)) {
-      try(args, parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, &Parser::parse_expression));
+    if (looking_at(Token::Open_Round_Bracket)) {
+      try(args, parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, { Token::Coma }, &Parser::parse_expression));
       return Expression_Node(Function_Call_Node(new_node(node), args));
     }
 
@@ -402,9 +439,23 @@ struct Parser {
   Result<Expression_Node> parse_expression () {
     try(left_side, parse_unary_expression());
 
+    if (eat(Token::If)) {
+      try(condition_expr, parse_expression());
+      // TODO: For this kind of expressions we must have an else branch 
+      if (!eat(Token::Else)) return Parser_Error();
+      try(else_branch_expr, parse_expression());
+
+      return Expression_Node(Post_If_Expr_Node(new_node(condition_expr), new_node(left_side), new_node(else_branch_expr)));
+    }
+
     if (eat(Token::Plus)) {
       try(right_side, parse_unary_expression());
       return Expression_Node(Binary_Expr_Node(new_node(left_side), new_node(right_side)));
+    }
+
+    if (eat(Token::As)) {
+      try(type_descr, parse_type());
+      return Expression_Node(As_Cast_Expr_Node(new_node(left_side), new_node(type_descr)));
     }
 
     return left_side;
@@ -465,8 +516,11 @@ struct Parser {
 
     if (!eat(Token::Colon)) return unexpected_token(Token::Colon);
 
+    auto extern_decl = eat(Token::Extern);
+    if (extern_decl) ensure_token(Token::Open_Round_Bracket);
+
     if (looking_at(Token::Open_Round_Bracket)) {
-      try(lambda_params, parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, &Parser::parse_parameter));
+      try(lambda_params, parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, { Token::Coma }, &Parser::parse_parameter));
 
       Type_Node *return_type = nullptr;
       if (!looking_at(Token::Open_Curly_Bracket)) {
@@ -474,14 +528,23 @@ struct Parser {
         return_type = new_node(type_value);
       }
 
-      try(lambda_body, parse_sequence_within(Token::Open_Curly_Bracket, Token::Close_Curly_Bracket, &Parser::parse_next));
+      if (extern_decl) {
+        /*
+          TODO: Extern function declarations must not have a defined body, as these functions are declared in external libraries.
+        */
+        if (looking_at(Token::Open_Curly_Bracket)) return Parser_Error();
+
+        return Declaration_Node(Lambda_Node(name_token, lambda_params, {}, return_type, Lambda_Node_Flags::Extern_Decl));
+      }
+
+      try(lambda_body, parse_sequence_within(Token::Open_Curly_Bracket, Token::Close_Curly_Bracket, { Token::Newline, Token::Semicolon }, &Parser::parse_next));
 
       return Declaration_Node(Lambda_Node(name_token, lambda_params, lambda_body, return_type));
     }
 
     if (eat(Token::Struct)) {
-      try(params, parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, &Parser::parse_parameter));
-      try(fields, parse_sequence_within(Token::Open_Curly_Bracket, Token::Close_Curly_Bracket, &Parser::parse_field));
+      try(params, parse_sequence_within(Token::Open_Round_Bracket, Token::Close_Round_Bracket, { Token::Coma },                      &Parser::parse_parameter));
+      try(fields, parse_sequence_within(Token::Open_Curly_Bracket, Token::Close_Curly_Bracket, { Token::Newline, Token::Semicolon }, &Parser::parse_field));
 
       return Declaration_Node(Struct_Node(name_token, params, fields));
     }
