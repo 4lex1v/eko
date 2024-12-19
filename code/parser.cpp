@@ -111,7 +111,7 @@ struct Parser {
 
   template <typename T, usize N>
   Result<List<T>> parse_sequence_within(Token_Kind open, Token_Kind close, const Token_Kind (&separators)[N], Result<T> (Parser::*func) ()) {
-    List<T> nodes;
+    Fin::List<T> nodes;
 
     if (eat(open)) {
       parse_until(close) {
@@ -369,20 +369,20 @@ struct Parser {
 
       if (is_signed) {
         try(value, parse_signed_integer(*current, true));  
-        literal.lit_kind = Literal_Node::Signed_Integer;
+        literal.lit_kind   = Literal_Node::Signed_Integer;
         literal.is_signed  = true;
         literal.sint_value = value;
       }
       else {
         auto [signed_error, svalue] = parse_signed_integer(*current, false);
         if (!signed_error) {
-          literal.lit_kind = Literal_Node::Signed_Integer;
+          literal.lit_kind   = Literal_Node::Signed_Integer;
           literal.is_signed  = false;
           literal.sint_value = svalue.take();
         }
         else {
           try(uvalue, parse_unsigned_integer(*current));
-          literal.lit_kind = Literal_Node::Unsigned_Integer;
+          literal.lit_kind   = Literal_Node::Unsigned_Integer;
           literal.uint_value = uvalue;
         }
       }
@@ -493,7 +493,7 @@ struct Parser {
     ensure_token(Token::Symbol);
 
     auto name_token = *current;
-    if (!advance()) return unexpected_token(Token::Last);
+    if (!advance()) return unexpected_token(Token::Last); // TODO: This is a bug, we should pass the expected value here
 
     if (!eat(Token::Colon)) return unexpected_token(Token::Colon);
 
@@ -563,6 +563,7 @@ struct Parser {
       }
 
       rewind();
+
       try(expr_node, parse_expression());
       return Node(expr_node);
     }

@@ -49,7 +49,7 @@ struct Type {
 
   Fin::Bit_Mask<Type_Flags> flags;
 
-  Type *element = nullptr;
+  const Type         *element = nullptr;
   const Type_Binding *binding = nullptr;
 
   GEN_KIND_CHECK(kind);
@@ -75,7 +75,8 @@ struct Immediate_Value {
 
   Kind  imm_kind;
   usize value;
-  Type  type;
+
+  const Type *type;
 };
 
 struct Load_Entry;
@@ -150,7 +151,8 @@ struct Entry {
 enum struct Binding_Kind {
   Value,
   Type,
-  Lambda
+  Lambda,
+  Ambiguous,
 };
 
 #define BINDING_KIND(KIND) KIND_TAG(Binding_Kind, KIND);
@@ -158,9 +160,7 @@ enum struct Binding_Kind {
 struct Value_Binding {
   BINDING_KIND(Value);
 
-  struct Variable_Node *node;
-
-  Type *type;
+  const Type *type;
 
   bool is_constant;
 };
@@ -179,9 +179,15 @@ struct Lambda_Binding {
   Scope scope;
 
   Fin::List<Value_Binding> params;
-  Type return_type;
+  const Type *return_type;
 
   Fin::List<Entry> entries;
+};
+
+struct Ambiguous_Binding {
+  BINDING_KIND(Ambiguous);
+
+  const Constant_Node *node;
 };
 
 struct Binding {
@@ -189,9 +195,10 @@ struct Binding {
 
   Binding_Kind kind;
   union {
-    Value_Binding  value_binding;
-    Type_Binding   type_binding;
-    Lambda_Binding lambda_binding;
+    Value_Binding     value_binding;
+    Type_Binding      type_binding;
+    Lambda_Binding    lambda_binding;
+    Ambiguous_Binding ambiguous_binding;
   };
 
   GEN_CONSTRUCTOR(Binding, kind, value_binding);

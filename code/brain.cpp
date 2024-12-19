@@ -36,10 +36,10 @@ struct Typer {
 
   Result<Binding *> typecheck_declaration (Scope &enclosing, Declaration_Node &node) {
     switch (node.decl_kind) {
-      case Declaration_Node::Struct: return typecheck_struct(enclosing, node.struct_decl);
-      case Declaration_Node::Lambda: return typecheck_lambda(enclosing, node.lambda_decl);
+      case Declaration_Node::Struct:   return typecheck_struct(enclosing, node.struct_decl);
+      case Declaration_Node::Lambda:   return typecheck_lambda(enclosing, node.lambda_decl);
+      case Declaration_Node::Constant: return typecheck_binding(enclosing, node.constant_decl);
       case Declaration_Node::Variable: { INCOMPLETE; return nullptr; }
-      case Declaration_Node::Constant: { INCOMPLETE; return nullptr; }
     }
   }
 
@@ -61,21 +61,21 @@ struct Typer {
     return Fin::Ok();
   }
 
-  Fin::Option<Type> resolve_built_in_type (const Token &token) {
+  Fin::Option<const Type *> resolve_built_in_type (const Token &token) {
     fin_ensure(token.kind == Token::Symbol);
 
-    if (token.value == "s32") return Type(Basic_Types::s32_type);
+    if (token.value == "s32") return &Basic_Types::s32_type;
 
     return Fin::None();
   }
   
-  Fin::Option<Type> find_type_declaration (const Scope &enclosing, const Plain_Type_Node &node) {
+  Fin::Option<const Type *> find_type_declaration (const Scope &enclosing, const Plain_Type_Node &node) {
     auto lookup_result = enclosing.defs.find(node.type_name.value);
     if (lookup_result) {
       auto binding = *lookup_result;
       fin_ensure(binding->kind == Binding::Type);
 
-      return Type {
+      return new (arena) Type {
         .kind    = Type::Struct,
         .binding = &binding->type_binding
       };
@@ -86,7 +86,7 @@ struct Typer {
     return find_type_declaration(*enclosing.parent, node);
   }
 
-  Result<Type> typecheck_type (const Scope &enclosing, const Type_Node &node) {
+  Result<const Type *> typecheck_type (const Scope &enclosing, const Type_Node &node) {
     switch (node.type_kind) {
       case Type_Node::Plain: {
         auto plain = node.plain_type;
@@ -101,7 +101,7 @@ struct Typer {
       }
       case Type_Node::Pointer: {
         try(elem_type, typecheck_type(enclosing, *node.pointer_type.value_type));
-        return Type { .kind = Type::Pointer, .element = new (arena) Type(elem_type) };
+        return new (arena) Type { .kind = Type::Pointer, .element = elem_type };
       }
       case Type_Node::Array: {
         try(boudns_type, typecheck_expression(enclosing, node.array_type.bounds));
@@ -118,44 +118,41 @@ struct Typer {
     return Typer_Error();
   }
 
-  Result<Type> typecheck_expression (const Scope &enclosing, const Expression_Node &expr) {
+  Result<const Type *> typecheck_expression (const Scope &enclosing, const Expression_Node &expr) {
     switch (expr.expr_kind) {
       case Expression_Node::Literal: {
         auto &lit_node = expr.literal_expr;
 
         switch (lit_node.lit_kind) {
-          case Literal_Node::String: {
-            break;
-          }
+          case Literal_Node::Null:   { INCOMPLETE; break; }
+          case Literal_Node::String: { INCOMPLETE; break; }
           case Literal_Node::Signed_Integer: {
             auto &value = lit_node.sint_value;
             
-            if (value >= signed_min(8)  && value <= signed_max(8))  return Type(Basic_Types::s8_type);
-            if (value >= signed_min(16) && value <= signed_max(16)) return Type(Basic_Types::s16_type);
-            if (value >= signed_min(32) && value <= signed_max(32)) return Type(Basic_Types::s32_type);
-            else                                                    return Type(Basic_Types::s64_type);
+            if (value >= signed_min(8)  && value <= signed_max(8))  return &Basic_Types::s8_type;
+            if (value >= signed_min(16) && value <= signed_max(16)) return &Basic_Types::s16_type;
+            if (value >= signed_min(32) && value <= signed_max(32)) return &Basic_Types::s32_type;
+            else                                                    return &Basic_Types::s64_type;
 
             break;
           }
           case Literal_Node::Unsigned_Integer: {
             auto &value = lit_node.uint_value;
 
-            if (value <= static_cast<u8>(-1))  return Type(Basic_Types::u8_type);
-            if (value <= static_cast<u16>(-1)) return Type(Basic_Types::u16_type);
-            if (value <= static_cast<u32>(-1)) return Type(Basic_Types::u32_type);
-            else                               return Type(Basic_Types::u64_type);
+            if (value <= static_cast<u8>(-1))  return &Basic_Types::u8_type;
+            if (value <= static_cast<u16>(-1)) return &Basic_Types::u16_type;
+            if (value <= static_cast<u32>(-1)) return &Basic_Types::u32_type;
+            else                               return &Basic_Types::u64_type;
             
             break;
           }
-          case Literal_Node::Float: { INCOMPLETE; break; }
+          case Literal_Node::Float:  { INCOMPLETE; break; }
           case Literal_Node::Double: { INCOMPLETE; break; }
         }
         
         break;
       }
-      default: {
-        fin_ensure(false && "INCOMPLETE");
-      }
+      default: { INCOMPLETE; break; }
     }
   }
 
@@ -179,7 +176,7 @@ struct Typer {
         // as invalid syntax.
         fin_ensure(var_decl.type || var_decl.expr);
 
-        auto value_binding = Value_Binding { .node = &var_decl };
+        auto value_binding = Value_Binding { };
 
         if (var_decl.type) {
           try(type, typecheck_type(struct_binding.scope, *var_decl.type));
@@ -247,10 +244,10 @@ struct Typer {
         auto &return_expr = node.return_stmnt.value;
         
         try(expr_result_type, typecheck_expression(context.scope, return_expr));
-        if (!types_are_the_same(context.return_type, expr_result_type)) {
+        if (!types_are_the_same(*context.return_type, *expr_result_type)) {
           // TODO: Perhaps we would have to extend this at some later point
-          if (expr_result_type != Built_In_Type::Integer)                     return Typer_Error();
-          if (!int_value_type_can_fit(context.return_type, expr_result_type)) return Typer_Error();
+          if (expr_result_type->built_in_type != Built_In_Type::Integer)        return Typer_Error();
+          if (!int_value_type_can_fit(*context.return_type, *expr_result_type)) return Typer_Error();
             
           /*
             We need to upcast the number according to the declared return type.
@@ -261,6 +258,7 @@ struct Typer {
         if (return_expr == Expression_Node::Literal) {
           auto &lit_expr = return_expr.literal_expr;
           switch (lit_expr.lit_kind) {
+            case Literal_Node::Null: { INCOMPLETE; break; }
             case Literal_Node::String: { break; }
 
             case Literal_Node::Unsigned_Integer:
@@ -306,7 +304,7 @@ struct Typer {
       try(var_binding, typecheck_variable(enclosing, param));
     }
 
-    lambda_binding.return_type = Basic_Types::void_type;
+    lambda_binding.return_type = &Basic_Types::void_type;
     if (lambda_node.return_type) {
       try(result_type, typecheck_type(enclosing, *lambda_node.return_type));
       lambda_binding.return_type = result_type;
@@ -338,6 +336,26 @@ struct Typer {
     return binding;
   }
 
+  Result<Binding *> typecheck_binding (Scope &enclosing, Constant_Node &node) {
+    using enum Expression_Node_Kind;
+
+    auto &expr = node.expr;
+
+    /*
+      TODO:
+      I'm not sure how pointer dereferencing would work with constant bindings, will research this at some future point.
+      For now I'm assuming that this could either be a pointer type binding or a pointer deref expression, which is ambiguous
+      at the declaration site.
+    */
+    if (expr == Identifier || expr == Star_Expr) {
+      return new (arena) Binding(Ambiguous_Binding(&node));
+    }
+
+    try(expr_type, typecheck_expression(enclosing, expr));
+
+    INCOMPLETE;
+    return nullptr;
+  }
 };
 
 Result<void> typecheck (Fin::Memory_Arena &arena, Source_File &file) {
