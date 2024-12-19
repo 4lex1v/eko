@@ -270,36 +270,39 @@ static Sys_Result<void> for_each_file (File_Path directory, String extension, bo
 static Sys_Result<List<File_Path>> list_files (Memory_Arena &arena, File_Path directory, String extension, bool recursive) {
   List<File_Path> file_list;
 
-  auto list_recursive = [&] (this auto self, File_Path directory) -> Sys_Result<void> {
-    WIN32_FIND_DATAA data;
+  auto list_recursive = [&] (this auto self, Memory_Arena &local, File_Path directory) -> Sys_Result<void> {
+      WIN32_FIND_DATAA data;
 
-    auto query = concat_string(arena, directory, "\\*");
+      auto query = concat_string(local, directory, "\\*");
 
-    auto search_handle = FindFirstFile(query, &data);
-    if (search_handle == INVALID_HANDLE_VALUE) return Error(get_system_error());
-    defer { FindClose(search_handle); };
+      auto search_handle = FindFirstFile(query, &data);
+      if (search_handle == INVALID_HANDLE_VALUE) return get_system_error();
+      defer { FindClose(search_handle); };
 
-    do {
-      auto local = arena;
+      do {
+        Memory_Arena scoped;
+        copy_arena(scoped, local);
       
-      const auto file_name = String(cast_bytes(data.cFileName));
-      if (file_name == "." || file_name == "..") continue;
+        const auto file_name = String(cast_bytes(data.cFileName));
+        if (file_name == "." || file_name == "..") continue;
 
-      if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-        if (recursive) fin_check(self(local, concat_string(local, directory, "\\", file_name)));
-      }
-      else {
-        if (!ends_with(file_name, extension)) continue;
+        if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+          if (recursive) fin_check(self(scoped, concat_string(scoped, directory, "\\", file_name)));
+        }
+        else {
+          if (!ends_with(file_name, extension)) continue;
           
-        auto file_path = concat_string(local, directory, "\\", file_name);
-        if (!file_list.contains(file_path)) list_push(arena, file_list, file_path);
-      }
-    } while (FindNextFileA(search_handle, &data) != 0);
+          auto file_path = concat_string(scoped, directory, "\\", file_name);
+          if (!file_list.contains(file_path)) list_push_copy(arena, file_list, file_path);
+        }
+      } while (FindNextFileA(search_handle, &data) != 0);
 
-    return Ok();
+      return Ok();
   };
 
-  fin_check(list_recursive(directory));
+  char buffer[2048];
+  Memory_Arena local(buffer);
+  fin_check(list_recursive(local, directory));
 
   return Ok(move(file_list));
 }
