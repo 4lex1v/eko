@@ -151,6 +151,7 @@ struct Entry {
 enum struct Binding_Kind {
   Value,
   Type,
+  Type_Alias,
   Lambda,
   Ambiguous,
 };
@@ -165,11 +166,28 @@ struct Value_Binding {
   bool is_constant;
 };
 
+/*
+  Type bindings represent both struct declarations as well as regular type binding.
+ */
 struct Type_Binding {
   BINDING_KIND(Type);
 
   const Struct_Node *node;
-  Scope scope;
+  Scope scope = {};
+
+  /*
+    TODO: @arch
+    Should the type be stored somewhere else?
+   */
+  Type *type_value = nullptr;
+
+  bool is_built_in = false;
+};
+
+struct Type_Alias_Binding {
+  BINDING_KIND(Type_Alias);
+
+  const Type_Binding *binding;
 };
 
 struct Lambda_Binding {
@@ -195,14 +213,18 @@ struct Binding {
 
   Binding_Kind kind;
   union {
-    Value_Binding     value_binding;
-    Type_Binding      type_binding;
-    Lambda_Binding    lambda_binding;
-    Ambiguous_Binding ambiguous_binding;
+    Value_Binding      value_binding;
+    Type_Binding       type_binding;
+    Type_Alias_Binding type_alias_binding;
+    Lambda_Binding     lambda_binding;
+    Ambiguous_Binding  ambiguous_binding;
   };
 
   GEN_CONSTRUCTOR(Binding, kind, value_binding);
+  GEN_KIND_CHECK(kind);
 };
+
+using Type_Cache = Fin::Hash_Table<Fin::String, const Binding *>;
 
 struct Typer_Error {
   enum Kind {
@@ -214,4 +236,6 @@ struct Typer_Error {
 
 template <typename T> using Result = Fin::Result<Typer_Error, T>;
 
-Result<void> typecheck (Fin::Memory_Arena &arena, Source_File &file);
+void init_typer ();
+
+Result<void> typecheck (Source_File &file);

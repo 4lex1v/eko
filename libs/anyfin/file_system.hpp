@@ -27,7 +27,7 @@ using File_Path = String;
 constexpr File_Path make_file_path (Memory_Arena &arena, String segment, Convertible_To<String> auto&&... other) {
   String segments[] { segment, other... };
 
-  auto reservation_size = array_count_elements(segments);
+  auto reservation_size = count(segments);
   for (auto &s: segments) reservation_size += s.length;
 
   char *buffer = reserve<char>(arena, reservation_size);

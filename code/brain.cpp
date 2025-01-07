@@ -1,5 +1,6 @@
 
 #include "anyfin/hash_table.hpp"
+#include "anyfin/prelude.hpp"
 #include "anyfin/result.hpp"
 #include "anyfin/option.hpp"
 #include "anyfin/bit_mask.hpp"
@@ -27,13 +28,60 @@ struct Basic_Types {
   constexpr static auto u64_type  = Type { .kind = Type::Built_In, .built_in_type = Built_In_Type::Integer, .flags = Unsigned | Double_Word };
 };
 
+constexpr static struct { Fin::String name; const Type *type; } built_in_types [] {
+  { "void", &Basic_Types::void_type },
+  { "bool", &Basic_Types::bool_type },
+  { "s8",   &Basic_Types::s8_type   },
+  { "s16",  &Basic_Types::s16_type  },
+  { "s32",  &Basic_Types::s32_type  },
+  { "s64",  &Basic_Types::s64_type  },
+  { "u8",   &Basic_Types::u8_type   },
+  { "u16",  &Basic_Types::u16_type  },
+  { "u32",  &Basic_Types::u32_type  },
+  { "u64",  &Basic_Types::u64_type  },
+};
+
+static Scope      global_scope { global_arena };
+static Type_Cache known_types  { global_arena };
+
+void init_typer () {
+  for (usize idx = 0; auto &[name, type]: built_in_types) {
+    auto binding = new (global_arena) Binding(Type_Binding {
+      .type_value  = const_cast<Type *>(type),
+      .is_built_in = true
+    });
+
+    known_types.insert_copy(name, binding);
+  }
+}
+
 static int64_t signed_min (int bits) { return -(1LL << (bits - 1)); }
 static int64_t signed_max (int bits) { return  (1LL << (bits - 1)) - 1; }
 
-struct Typer {
-  Fin::Memory_Arena &arena;
-  Source_File       &file;
+/*
+  I just want call functions out-of-order without declaring them upfront...
+ */
+static struct Typer_Api {
+  Result<void> typecheck (Source_File &file) {
+    for (auto &node: file.tree) {
+      switch (node.kind) {
+        case Node::Declaration: {
+          try(binding, typecheck_declaration(file.scope, node.decl_node));
 
+          file.scope.defs.insert_copy(node.decl_node.name, binding);
+          list_push_copy(global_arena, file.top_level, node.decl_node.name);
+
+          break;
+        }
+        default: {
+          INCOMPLETE;
+        }
+      }
+    }
+
+    return Fin::Ok();
+  }
+    
   Result<Binding *> typecheck_declaration (Scope &enclosing, Declaration_Node &node) {
     switch (node.decl_kind) {
       case Declaration_Node::Struct:   return typecheck_struct(enclosing, node.struct_decl);
@@ -43,47 +91,49 @@ struct Typer {
     }
   }
 
-  Result<void> typecheck () {
-    for (auto node: file.tree) {
-      switch (node.kind) {
-        case Node::Declaration: {
-          try(binding, typecheck_declaration(file.scope, node.decl_node));
-          list_push_copy(arena, file.top_level, binding);
+  Fin::Option<Binding *> find_declaration (const Scope &enclosing, const Fin::String &name) {
+    auto lookup_result = enclosing.defs.find(name);
+    if (lookup_result) return Fin::move(*lookup_result);
+    
+    if (enclosing.parent == nullptr) return Fin::None();
 
-          break;
+    return find_declaration(*enclosing.parent, name);
+  }
+
+  Result<void> typecheck_ambiguous_as_type_alias (const Scope &enclosing, Binding &binding) {
+    fin_ensure(binding == Binding::Ambiguous);
+
+    auto &expr = binding.ambiguous_binding.node->expr;
+    switch (expr.expr_kind) {
+      case Expression_Node::Identifier: {
+        auto &id = expr.identifier_expr;
+        
+        auto *known_type = known_types.find(id.value);
+        if (known_type) {
+          binding = Binding(Type_Alias_Binding {
+            .binding = &(*known_type)->type_binding
+          });
+
+          return Fin::Ok();
         }
-        default: {
-          fin_ensure(false && "INCOMPLETE");
+
+        auto lookup_result = find_declaration(enclosing, expr.identifier_expr.value);
+        if (!lookup_result) return Typer_Error();
+
+        auto &value_binding = *lookup_result.take();
+        if (value_binding == Binding::Ambiguous) {
+            typecheck_ambiguous_as_type_alias(enclosing, value_binding);
         }
+        
+        return Typer_Error();
+      }
+      default: {
+        INCOMPLETE;
+        break;
       }
     }
 
     return Fin::Ok();
-  }
-
-  Fin::Option<const Type *> resolve_built_in_type (const Token &token) {
-    fin_ensure(token.kind == Token::Symbol);
-
-    if (token.value == "s32") return &Basic_Types::s32_type;
-
-    return Fin::None();
-  }
-  
-  Fin::Option<const Type *> find_type_declaration (const Scope &enclosing, const Plain_Type_Node &node) {
-    auto lookup_result = enclosing.defs.find(node.type_name.value);
-    if (lookup_result) {
-      auto binding = *lookup_result;
-      fin_ensure(binding->kind == Binding::Type);
-
-      return new (arena) Type {
-        .kind    = Type::Struct,
-        .binding = &binding->type_binding
-      };
-    }
-    
-    if (enclosing.parent == nullptr) return Fin::None();
-
-    return find_type_declaration(*enclosing.parent, node);
   }
 
   Result<const Type *> typecheck_type (const Scope &enclosing, const Type_Node &node) {
@@ -91,21 +141,51 @@ struct Typer {
       case Type_Node::Plain: {
         auto plain = node.plain_type;
 
-        auto built_in = resolve_built_in_type(plain.type_name);
-        if (built_in) return built_in.take();
+        auto *binding = known_types.find(plain.name);
+        if (binding) return Fin::Ok<const Type *>((*binding)->type_binding.type_value);
 
-        auto lookup_result = find_type_declaration(enclosing, plain);
-        if (lookup_result) return lookup_result.take();
+        auto binding_lookup_result = find_declaration(enclosing, plain.name);
+        if (binding_lookup_result) {
+          auto &binding = *binding_lookup_result.take();
+          if (binding == Binding::Type) {
+            /*
+              TODO: 
+                This is some weird stuff happening here that I'm not sure about.
+                If there's no such type with this name in the cache, it wasn't typechecked at this point.
+             */
+            INCOMPLETE;
+            // auto &type_binding = binding.type_binding;
+            // if (!type_binding.type_value) {
+            //   type_binding.type_value = new (global_arena) Type {
+            //     .kind    = Type::Struct,
+            //     .binding = &type_binding
+            //   };
+            // }
 
-        return Typer_Error();
+            return Fin::Ok<const Type *>(binding.type_binding.type_value);
+          }
+
+          if (binding == Binding::Ambiguous) {
+            typecheck_ambiguous_as_type_alias(enclosing, binding);
+            fin_ensure(binding == Binding::Type_Alias);
+
+            known_types.insert_copy(plain.name, &binding);
+
+            return Fin::Ok<const Type *>(binding.type_alias_binding.binding->type_value);
+          }
+
+          return Typer_Error(); // Found value is not a type declaration
+        }
+
+        return Typer_Error(); // No type declaration found
       }
       case Type_Node::Pointer: {
         try(elem_type, typecheck_type(enclosing, *node.pointer_type.value_type));
-        return new (arena) Type { .kind = Type::Pointer, .element = elem_type };
+        return new (global_arena) Type { .kind = Type::Pointer, .element = elem_type };
       }
       case Type_Node::Array: {
         try(boudns_type, typecheck_expression(enclosing, node.array_type.bounds));
-        fin_ensure(false && "INCOMPLETE");
+        INCOMPLETE;
 
         break;
       }
@@ -152,14 +232,33 @@ struct Typer {
         
         break;
       }
+      case Expression_Node::As_Cast: {
+        auto &as_cast = expr.as_cast_expr;
+
+        try(expr_type, typecheck_expression(enclosing, *as_cast.expr));
+        try(type,      typecheck_type(enclosing, *as_cast.type_node));
+
+        if (expr_type->kind == type->kind) {
+          /*
+            For pointer casts I'm thinking of a c-like behaviour where we just reinterpret the memory at the
+            pointer and fully trust the engineer that this operation is valid.
+           */
+          if (expr_type->kind == Type::Pointer) return type;
+        }
+
+        // More elabore casts checking should be here...
+        INCOMPLETE;
+
+        break;
+      }
       default: { INCOMPLETE; break; }
     }
   }
 
   Result<Binding *> typecheck_struct (Scope &enclosing, Struct_Node &struct_decl) {
-    auto binding = new (arena) Binding(Type_Binding {
+    auto binding = new (global_arena) Binding(Type_Binding {
       .node  = &struct_decl,
-      .scope = Scope(arena, &enclosing),
+      .scope = Scope(global_arena, &enclosing),
     });
     auto &struct_binding = binding->type_binding;
 
@@ -194,13 +293,25 @@ struct Typer {
   }
 
   Result<Value_Binding> typecheck_variable (Scope &enclosing, Variable_Node &node) {
+    // First we need to deal with the type, it could either be provided by the user or inferred from the
+    // init expression if the one is provided...
     if (node.type == nullptr) {
-      if (node.expr == nullptr) {
-        return Typer_Error();
-      }
+      if (node.expr == nullptr) return Typer_Error(); 
 
-      typecheck_expression(enclosing, *node.expr);
+      try(expr_type, typecheck_expression(enclosing, *node.expr));
+
+      return Value_Binding { .type = expr_type };
     }
+
+    try(type_value, typecheck_type(enclosing, *node.type));
+    auto binding = Value_Binding { .type = type_value };
+
+    if (node.expr == nullptr) return binding;
+
+    try(expr_type, typecheck_expression(enclosing, *node.expr));
+    if (!types_are_the_same(*type_value, *expr_type)) return Typer_Error();
+
+    return binding;
   }
 
   bool types_are_the_same (const Type &left, const Type &right) {
@@ -293,9 +404,9 @@ struct Typer {
   }
 
   Result<Binding *> typecheck_lambda (Scope &enclosing, Lambda_Node &lambda_node) {
-    auto binding = new (arena) Binding(Lambda_Binding {
+    auto binding = new (global_arena) Binding(Lambda_Binding {
       .node  = &lambda_node,
-      .scope = Scope(arena, &enclosing),
+      .scope = Scope(global_arena, &enclosing),
     });
     auto &lambda_binding = binding->lambda_binding;
     auto &scope          = lambda_binding.scope;
@@ -306,8 +417,8 @@ struct Typer {
 
     lambda_binding.return_type = &Basic_Types::void_type;
     if (lambda_node.return_type) {
-      try(result_type, typecheck_type(enclosing, *lambda_node.return_type));
-      lambda_binding.return_type = result_type;
+      try(expr_type, typecheck_type(enclosing, *lambda_node.return_type));
+      lambda_binding.return_type = expr_type;
     }
 
     for (auto &node: lambda_node.body) {
@@ -318,7 +429,7 @@ struct Typer {
         }
         case Node::Statement: {
           try(entry, transform_statement(lambda_binding, node.stmnt_node));
-          list_push(arena, lambda_binding.entries, Fin::move(entry));
+          list_push(global_arena, lambda_binding.entries, Fin::move(entry));
           break;
         }
         case Node::Expression: {
@@ -348,7 +459,7 @@ struct Typer {
       at the declaration site.
     */
     if (expr == Identifier || expr == Star_Expr) {
-      return new (arena) Binding(Ambiguous_Binding(&node));
+      return new (global_arena) Binding(Ambiguous_Binding(&node));
     }
 
     try(expr_type, typecheck_expression(enclosing, expr));
@@ -356,10 +467,9 @@ struct Typer {
     INCOMPLETE;
     return nullptr;
   }
-};
+} typer;
 
-Result<void> typecheck (Fin::Memory_Arena &arena, Source_File &file) {
-  Typer typer(arena, file);
-  return typer.typecheck();
+Result<void> typecheck (Source_File &file) {
+  return typer.typecheck(file);
 }
 

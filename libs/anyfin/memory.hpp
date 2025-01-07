@@ -4,11 +4,6 @@
 #include "anyfin/base.hpp"
 #include "anyfin/meta.hpp" // for the is_pointer check is align function
 
-extern "C" {
-void * memset (void *destination, int value, usize count);
-void * memcpy (void *destination, const void *source, usize count);
-}
-
 namespace Fin {
 
 template <typename T>
@@ -36,6 +31,10 @@ constexpr auto copy_memory (T *destination, const T *source, const usize count =
 template <typename T>
 constexpr void zero_memory (T *memory, const usize count = 1) {
   __builtin_memset(memory, 0, sizeof(T) * count);
+}
+
+constexpr void fill_memory (void *memory, u8 byte_value, usize count = 1) {
+  __builtin_memset(memory, byte_value, count);
 }
 
 template <typename T>

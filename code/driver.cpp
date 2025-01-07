@@ -13,8 +13,6 @@
 #include "parser.hpp"
 #include "tokenizer.hpp"
 
-using Fin::Memory_Arena;
-
 constexpr usize memory_reservation = Fin::megabytes(64);
 
 using Panic_Handler = void (*)(u32);
@@ -42,7 +40,7 @@ static T && unwrap (Fin::Sys_Result<T> &&result, Fin::Callsite callsite = {}) {
   panic("% - ERROR: Call failed due to the error: %\n", callsite, result.error.take());
 }
 
-static Source_File create (Memory_Arena &arena, const Module_Context *context, const char *file_path) {
+static Source_File create (Fin::Memory_Arena &arena, Scope &global, const char *file_path) {
   auto sample_file = unwrap(Fin::open_file(file_path));
   auto file_size   = unwrap(get_file_size(sample_file));
   if (file_size == 0) {
@@ -54,32 +52,34 @@ static Source_File create (Memory_Arena &arena, const Module_Context *context, c
   read_bytes_into_buffer(sample_file, file_buffer, file_size);
   file_buffer[file_size] = '\0';
   
-  return Source_File(arena, context, file_path, Fin::Array(reinterpret_cast<char *>(file_buffer), file_size + 1));
+  return Source_File(arena, global, file_path, Fin::Array(reinterpret_cast<char *>(file_buffer), file_size + 1));
 }
 
-int main () {
-  auto arena = Memory_Arena { Fin::reserve_virtual_memory(memory_reservation) };
+Fin::Memory_Arena global_arena;
 
-  auto working_directory_path = unwrap(get_working_directory(arena));
+int main () {
+  global_arena = Fin::Memory_Arena { Fin::reserve_virtual_memory(memory_reservation) };
+
+  auto working_directory_path = unwrap(get_working_directory(global_arena));
   log("Working directory: %\n", working_directory_path);
 
   auto file_path   = "samples/main.eko";
 
-  Scope global_scope (arena);
-  Module_Context module (Scope(arena, &global_scope));
+  Scope global_scope(global_arena, nullptr, "Global");
 
-  auto unit = create(arena, &module, "samples/main.eko");
+  auto unit = create(global_arena, global_scope, "samples/main.eko");
 
-  auto tokenizer_status = read_tokens(arena, unit);
+  auto tokenizer_status = read_tokens(unit);
   if (tokenizer_status != Tokenizer_Status::Success) return 1;
 
-  auto parser_error = build_tree(arena, unit);
+  auto parser_error = build_tree(unit);
   if (parser_error) return 1;
 
-  auto typer_error = typecheck(arena, unit);
+  init_typer();
+  auto typer_error = typecheck(unit);
   if (typer_error.is_error()) return 1;
 
-  auto [codegen_error] = codegen(arena, unit);
+  auto [codegen_error] = codegen(unit);
   if (codegen_error) return 1;
 
   return 0;

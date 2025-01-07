@@ -1,10 +1,11 @@
 
-DWORD  :: u32 
+DWORD  :: u32
 HANDLE :: *Any
+TEST   :: DWORD
 
 STD_OUTPUT_HANDLE :: -11 as DWORD
 
-GetStdHandle :: extern (std_handle: DWORD) HANDLE
+GetStdHandle :: extern (std_handle: TEST) HANDLE
 WriteFile    :: extern (file: HANDLE, buffer: *Any, bytes_to_write: DWORD, bytes_written: *DWORD, overlapped: *Any = null) bool
 
 main :: () s32 {

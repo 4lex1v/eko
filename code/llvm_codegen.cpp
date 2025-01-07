@@ -80,7 +80,7 @@ static LLVMTypeRef get_llvm_type (LLVMModuleRef module, const Type &type) {
   return nullptr;
 }
 
-Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source_File &file) {
+Fin::Result<Codegen_Error, void> codegen (const Source_File &file) {
   init_llvm_generator();
   
   auto data_layout     = LLVMCreateTargetDataLayout(target_machine);
@@ -92,11 +92,13 @@ Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source
 
   auto builder = LLVMCreateBuilderInContext(llvm_context);
 
-  for (auto &decl: file.top_level) {
+  for (auto &decl_name: file.top_level) {
+    auto decl = file.scope[decl_name];
+
     switch (decl->kind) {
       case Binding::Lambda: {
-        auto offset = arena.offset;
-        defer { arena.offset = offset; }; // Reset all allocations 
+        auto offset = global_arena.offset;
+        defer { global_arena.offset = offset; }; // Reset all allocations 
 
         auto &lambda = decl->lambda_binding;
         auto &name   = lambda.node->name;
@@ -105,11 +107,11 @@ Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source
         auto return_type = get_llvm_type(unit, *lambda.return_type);
 
         auto params_count = lambda.params.count;
-        auto params       = new (arena) LLVMTypeRef[params_count];
+        auto params       = new (global_arena) LLVMTypeRef[params_count];
 
         auto function_type = LLVMFunctionType(return_type, params, params_count, false);
 
-        auto cname = new (arena) char[name.value.length + 1];
+        auto cname = new (global_arena) char[name.value.length + 1];
         memcpy(cname, name.value.value, name.value.length);
         cname[name.value.length] = '\0';
         auto function = LLVMAddFunction(unit, cname, function_type);

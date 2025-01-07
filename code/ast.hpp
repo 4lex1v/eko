@@ -73,7 +73,7 @@ struct Literal_Node {
 struct Identifier_Node {
   EXPR_KIND(Identifier);
 
-  Token identifier;
+  Token value;
 };
 
 struct Member_Access_Node {
@@ -154,7 +154,7 @@ enum struct Type_Node_Kind: u8 {
 struct Plain_Type_Node {
   TYPE_KIND(Plain);
 
-  Token type_name;
+  Token name;
   Fin::List<Type_Node> parameters;
 };
 
@@ -261,13 +261,17 @@ struct Declaration_Node {
     Struct_Node   struct_decl;
     Lambda_Node   lambda_decl;
   };
-  
+
+  Fin::String name; 
+    
   template <typename T>
   Declaration_Node (T value):
     decl_kind { T::kind }
   {
-    new (&this->constant_decl) T(Fin::move(value));
+    auto _value = new (&this->constant_decl) T(Fin::move(value));
+    name = _value->name.value;
   }
+
 };
 
 struct Statement_Node;

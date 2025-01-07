@@ -26,6 +26,25 @@
     </Expand>
   </Type>
 
+  <Type Name="Fin::Hash_Table&lt;*,*&gt;">
+    <DisplayString>size = {count}/{capacity}</DisplayString>
+	<Expand>
+	  <Item Name="count">count</Item>
+	  <Item Name="capacity">capacity</Item>
+	  <CustomListItems MaxItemsPerView="100">
+        <Variable Name="i" InitialValue="0" />
+        <Size>count</Size>
+        <Loop>
+          <Break Condition="i >= capacity" />
+          <If Condition="(controls[i] &amp; 0x80) == 0">  <!-- Check if the top bit is NOT set -->
+            <Item>slots[i]</Item>
+          </If>
+          <Exec>++i</Exec>
+        </Loop>
+      </CustomListItems>
+	</Expand>
+  </Type>
+
   <Type Name="Token">      
       <DisplayString Condition="kind == Symbol">{kind,en} [ {value} ]</DisplayString>
       <DisplayString Condition="kind != Symbol">{kind,en}</DisplayString>

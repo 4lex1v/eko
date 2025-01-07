@@ -14,4 +14,4 @@ enum struct Tokenizer_Status: u8 {
   Unclosed_String_Literal
 };
 
-Tokenizer_Status read_tokens (Fin::Memory_Arena &arena, Source_File &unit);
+Tokenizer_Status read_tokens (Source_File &unit);

@@ -17,8 +17,6 @@ static constexpr usize memory_reservation_per_process = Fin::megabytes(1);
 template <typename T> using Result = Fin::Result<Parser_Error, T>;
 
 struct Parser {
-  Memory_Arena &arena;
-
   Source_File &unit;
   const Token *current { unit.tokens.values };
 
@@ -102,10 +100,10 @@ struct Parser {
   auto new_node (From &&value) {
     using Raw = Fin::remove_ref<From>;
     if constexpr (Fin::same_types<To, void>) {
-      return new (arena) Raw(Fin::move(value));
+      return new (global_arena) Raw(Fin::move(value));
     }
     else {
-      return new (arena) To(Raw(Fin::move(value)));
+      return new (global_arena) To(Raw(Fin::move(value)));
     }
   }
 
@@ -116,7 +114,7 @@ struct Parser {
     if (eat(open)) {
       parse_until(close) {
         try(value, (this->*func)());
-        list_push(arena, nodes, Fin::move(value));
+        list_push(global_arena, nodes, Fin::move(value));
         for (auto &sep: separators) {
           if (current == sep && !advance())
             return unexpected_token(Token::Last);
@@ -581,14 +579,14 @@ struct Parser {
   Fin::Option<Parser_Error> parse_tree () {
     while (!looking_at(Token::Last)) {
       try(node, parse_next());
-      list_push(arena, unit.tree, Fin::move(node));
+      list_push(global_arena, unit.tree, Fin::move(node));
     }
 
     return Fin::None();
   }
 };
 
-Fin::Option<Parser_Error> build_tree (Memory_Arena &arena, Source_File &unit) {
-  auto parser = Parser(arena, unit);
+Fin::Option<Parser_Error> build_tree (Source_File &unit) {
+  auto parser = Parser(unit);
   return parser.parse_tree();
 }

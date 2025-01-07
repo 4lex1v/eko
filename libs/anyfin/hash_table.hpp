@@ -5,6 +5,7 @@
 
 #include "prelude.hpp"
 #include "allocator.hpp"
+#include "memory.hpp"
 
 // TODO: #ux Can I wrap these hashes into a struct?
 
@@ -45,7 +46,7 @@ static inline u64 h1_hash (const u64 key_hash) {
   return (key_hash >> 7);
 }
 
-static inline u8 h2_hash (const u64 key_hash) {
+static inline u8 control_hash (const u64 key_hash) {
   return (key_hash & 0x7F);
 }
 
@@ -62,18 +63,13 @@ struct Hash_Table {
   
   constexpr static f32 Growth_Ratio = 0.875f;
 
-  Control_Byte default_controls [16] {
-    CB::Empty, CB::Empty, CB::Empty, CB::Empty, CB::Empty, CB::Empty, CB::Empty, CB::Empty,
-    CB::Empty, CB::Empty, CB::Empty, CB::Empty, CB::Empty, CB::Empty, CB::Empty, CB::Empty
-  };
-
   Allocator allocator;
   void *memory = nullptr;
 
-  Control_Byte *controls      = reinterpret_cast<Control_Byte *>(default_controls);
+  Control_Byte *controls      = nullptr;
   Slot         *slots         = nullptr;
   usize         capacity      = 0;
-  usize         until_growth  = static_cast<usize>(Growth_Ratio * (f32) capacity);
+  usize         until_growth  = 0;
 
   usize count = 0;
 
@@ -82,6 +78,13 @@ struct Hash_Table {
     allocator { _allocator }
   {}
   
+  /*
+    TODO: @API @speed
+    This looks like a potentially bad API causing cases like this:
+
+    auto result = this->defs.find(key);
+    return result ? *result : nullptr;
+   */
   decltype(auto) find (this auto &&self, const Key &key) {
     auto slot = self.find_slot(key);
     return slot ? &slot->value : nullptr;
@@ -92,28 +95,22 @@ struct Hash_Table {
   }
 
   void insert (Key &&key, Value &&value) {
+    if (until_growth == 0) resize(this->capacity ? this->capacity << 1 : 16);
+    
     if (auto slot = find_slot(key); slot) {
       slot->value = move(value);  
       return;
     }
 
-    const auto key_hash = compute_hash(key);
-
-    auto target = find_position_for_insertion(key_hash);
-    if (until_growth == 0 && controls[target.offset] != Control_Byte::Removed) {
-      grow_if_needed();
-      target = find_position_for_insertion(key_hash);
-    }
-
+    auto key_hash    = compute_hash(key);
+    auto target      = find_position_for_insertion(key_hash);
     auto slot_offset = target.offset;
-
-    fin_ensure(slot_offset >= 0); //, "Something went wrong while looking up the slot to store the value");
 
     auto &slot = slots[slot_offset];
     slot.key   = move(key);
     slot.value = move(value);
 
-    set_control_byte(slot_offset, h2_hash(key_hash));
+    set_control_byte(slot_offset, control_hash(key_hash));
 
     this->count        += 1;
     this->until_growth -= 1;
@@ -129,7 +126,7 @@ struct Hash_Table {
     while (true) {
       auto group = Group(this->controls + probe.position);
 
-      const auto matches_count = group.match(h2_hash(key_hash), match_array);
+      const auto matches_count = group.match(control_hash(key_hash), match_array);
       for (u8 index = 0; index < matches_count; index++) {
         const auto slot = slots + probe.offset(match_array[index]);
         if (key != slot->key) continue;
@@ -150,36 +147,53 @@ struct Hash_Table {
   }
   
   void resize (const usize new_capacity) {
-    auto *old_controls = controls;
-    auto *old_slots    = slots;
-    auto  old_capacity = capacity;
+    auto *old_memory   = this->memory;
+    auto *old_controls = this->controls;
+    auto *old_slots    = this->slots;
+    auto  old_capacity = this->capacity;
 
-    allocate_backing_memory(new_capacity);
+    fin_ensure(new_capacity > 0); // "Attempt to initialize the hash table with 0 capacity");
 
-    usize total_probe_length = 0;
+    this->capacity     = new_capacity;
+    this->until_growth = static_cast<usize>(Growth_Ratio * (f32) new_capacity) - this->count;
+
+    /*
+      Allocates two arrays of "capacity" size, one to hold the control bytes (u8) and the other one
+      to store the actual data (Slots). Additional 15 bytes are added to the end of the control array
+      so that we could efficiently scan the control bytes from any position, these bytes reflect the
+      beginning of the controls array.
+    */
+    const usize controls_size   = this->capacity + 15;
+    const usize allocation_size = controls_size + (this->capacity * sizeof(Slot));
+
+    this->memory   = reinterpret_cast<u8 *>(alloc(this->allocator, allocation_size));
+    this->controls = reinterpret_cast<Control_Byte *>(this->memory);
+    this->slots    = reinterpret_cast<Slot *>(this->controls + controls_size);
+
+    Fin::fill_memory(this->controls, static_cast<u8>(Control_Byte::Empty), controls_size);
+
     for (usize index = 0; index < old_capacity; index++) {
-      if (static_cast<s8>(old_controls[index]) < 0) continue; // if MSB is not set, it's a filled slot
+      if (static_cast<s8>(old_controls[index]) & 0x80) continue; // MSB is set for empty and deleted slots
 
       const auto hash            = compute_hash(old_slots[index].key);
       const auto insert_position = find_position_for_insertion(hash);
 
-      total_probe_length += insert_position.probe_length;
-
-      set_control_byte(insert_position.offset, h2_hash(hash));
-      copy_memory(slots + insert_position.offset, old_slots + index);
+      set_control_byte(insert_position.offset, control_hash(hash));
+      copy_memory(this->slots + insert_position.offset, old_slots + index);
     }
 
-    if (old_capacity) free(this->allocator, old_controls);
+    if (old_memory) free(this->allocator, old_memory);
   }
   
   void destroy () {
-    if (this->controls == default_controls) return;
-
     free(this->allocator, this->memory);
+    *this = {};
   }
 
 private:
   Slot * find_slot (this auto &&self, const Key &key) {
+    if (!self.count) return nullptr;
+    
     const auto key_hash = compute_hash(key);
 
     auto probe = Probe_Position(key_hash, self.capacity);
@@ -188,7 +202,7 @@ private:
     while (true) {
       auto group = Group(self.controls + probe.position);
 
-      const auto element_hash     = h2_hash(key_hash);
+      const auto element_hash     = control_hash(key_hash);
       const auto elements_matched = group.match(element_hash, match_array);
       for (u8 index = 0; index < elements_matched; index++) {
         const auto slot = self.slots + probe.offset(match_array[index]);
@@ -203,45 +217,9 @@ private:
     }
   }
 
-  void allocate_backing_memory (const usize new_capacity) {
-    fin_ensure(new_capacity > 0); // "Attempt to initialize the hash table with 0 capacity");
-
-    this->capacity     = new_capacity;
-    this->until_growth = static_cast<usize>(Growth_Ratio * (f32) new_capacity) - this->count;
-
-    /*
-      Allocates two arrays of "capacity" size, one to hold the control bytes (u8) and the other one
-      to store the actual data (Slots). Additional 15 bytes are added to the end of the control array
-      so that we could efficiently scan the control bytes from any position, these bytes reflect the
-      beginning of the controls array.
-     */
-    const usize controls_size   = capacity + 15;
-    const usize allocation_size = controls_size + (capacity * sizeof(Slot));
-
-    auto memory = reinterpret_cast<u8 *>(alloc(this->allocator, allocation_size));
-
-    controls = reinterpret_cast<Control_Byte *>(memory);
-    slots    = reinterpret_cast<Slot *>(memory + controls_size);
-
-    for (int i = 0; i < controls_size; i++) {
-      controls[i] = Control_Byte::Empty;
-    }
-
-  }
-
   void set_control_byte (const usize offset, const u8 control_byte_value) {
     this->controls[offset] = static_cast<Control_Byte>(control_byte_value);
     this->controls[((offset - 15) & (this->capacity - 1)) + 15] = static_cast<Control_Byte>(control_byte_value); 
-  }
-
-  /*
-  TODO(#efficiency):
-    Google's implementation also offers an improvement to cleanup deleted slots and rehash in place without growing.
-    Worth to check this out at some point, if it would be necessary for my purposes.
- */
-  void grow_if_needed () {
-    if (capacity == 0) [[unlikely]] resize(16);
-    else                            resize(capacity << 1);
   }
 
   struct Probe_Position {

@@ -41,7 +41,7 @@ static auto to_string (const System_Error &error, Memory_Arena &arena) {
 
   {
     const char msg[] = "system error(";
-    auto msg_len = array_count_elements(msg) - 1;
+    auto msg_len = count(msg) - 1;
     auto buffer = reserve<char>(arena, msg_len);
 
     copy_memory(buffer, msg, msg_len);

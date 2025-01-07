@@ -10,4 +10,4 @@ struct Codegen_Error {
   
 };
 
-Fin::Result<Codegen_Error, void> codegen (Fin::Memory_Arena &arena, const Source_File &file);
+Fin::Result<Codegen_Error, void> codegen (const Source_File &file);

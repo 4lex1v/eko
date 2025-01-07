@@ -14,4 +14,4 @@ struct Parser_Error {
   Kind kind;
 };
 
-Fin::Option<Parser_Error> build_tree (Fin::Memory_Arena &arena, Source_File &unit);
+Fin::Option<Parser_Error> build_tree (Source_File &unit);

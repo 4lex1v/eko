@@ -60,6 +60,9 @@ struct Token {
   Fin::String value;
 
   GEN_KIND_CHECK(kind);
+
+  fin_forceinline
+  operator Fin::String () const { return value; }
 };
 
 static bool operator == (const Token *token, Token_Kind kind) {

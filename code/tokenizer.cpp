@@ -2,6 +2,7 @@
 #include "anyfin/base.hpp"
 #include "anyfin/result.hpp"
 
+#include "eko.hpp"
 #include "tokenizer.hpp"
 #include "utils.hpp"
 
@@ -210,15 +211,15 @@ struct Tokenizer {
   }
 };
 
-Tokenizer_Status read_tokens (Fin::Memory_Arena &arena, Source_File &unit) {
-  Tokenizer tokenizer(unit);
+Tokenizer_Status read_tokens (Source_File &unit) {
+  Tokenizer tokenizer { unit };
 
-  auto tokens        = get_memory_at_current_offset<Token>(arena);
+  auto tokens        = get_memory_at_current_offset<Token>(global_arena);
   usize tokens_count = 0;
 
   while (true) {
     try(token, tokenizer.read_token());
-    *reserve<Token>(arena) = token; 
+    *reserve<Token>(global_arena) = token; 
     tokens_count += 1;
 
     if (token == Token::Last) break;

@@ -52,8 +52,6 @@ constexpr decltype(auto) cast_bytes (Byte_Type auto *bytes) {
 }
 
 template <typename T, usize N>
-consteval usize array_count_elements (const T (&)[N]) {
-  return N;
-}
+consteval usize count (const T (&)[N]) { return N; }
 
 }
