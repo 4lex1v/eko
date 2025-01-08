@@ -467,7 +467,11 @@ struct Parser {
 
     if (eat(Token::Colon)) {
       try(init_expr, parse_expression());
-      return Declaration_Node(Constant_Node(field_name, init_expr));
+      return Declaration_Node(Constant_Node {
+        .constant_type = Constant_Node::Expr,
+        .name          = field_name,
+        .expr          = init_expr
+      });
     }
 
     Type_Node *field_type = nullptr;
@@ -547,9 +551,34 @@ struct Parser {
       return Declaration_Node(Struct_Node(name_token, params, fields));
     }
 
-    try(declaration_value, parse_expression());
+    /*
+      This part is an issue because of array/seq types, which we can't represent as expressions...
+      This need to change to a smarter approach where we try to this as an expression (which potentially
+      could be ambiguous because of things like *something, which could be a pointer decl or var dereferencing),
+      as long as syntactically this looks like a type description. If neither makes sense, raise an error to the user.
+     */
+    auto check_point = this->current;
+    auto declaration_value = parse_expression();
+    if (declaration_value.is_ok()) {
+      return Declaration_Node(Constant_Node {
+        .constant_type = Constant_Node::Expr,
+        .name          = name_token,
+        .expr          = declaration_value.value.take()
+      });
+    }
 
-    return Declaration_Node(Constant_Node(name_token, declaration_value));
+    // Reset the position and try to parse as a type
+    this->current = check_point;
+    auto declaration_type = parse_type();
+    if (declaration_type.is_ok()) {
+      return Declaration_Node(Constant_Node {
+        .constant_type = Constant_Node::Type,
+        .name          = name_token,
+        .type          = declaration_type.value.take()
+      });
+    }
+
+    return Parser_Error();
   }
 
   Result<Node> parse_next () {

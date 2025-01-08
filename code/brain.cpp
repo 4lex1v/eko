@@ -45,10 +45,10 @@ static Scope      global_scope { global_arena };
 static Type_Cache known_types  { global_arena };
 
 void init_typer () {
-  for (usize idx = 0; auto &[name, type]: built_in_types) {
+  for (auto &[name, type]: built_in_types) {
     auto binding = new (global_arena) Binding(Type_Binding {
-      .type_value  = const_cast<Type *>(type),
-      .is_built_in = true
+      .binding_kind = Type_Binding::Built_In,
+      .type_value   = const_cast<Type *>(type),
     });
 
     known_types.insert_copy(name, binding);
@@ -100,7 +100,7 @@ static struct Typer_Api {
     return find_declaration(*enclosing.parent, name);
   }
 
-  Result<void> typecheck_ambiguous_as_type_alias (const Scope &enclosing, Binding &binding) {
+  Result<void> typecheck_ambiguous_as_type (const Scope &enclosing, Binding &binding) {
     fin_ensure(binding == Binding::Ambiguous);
 
     auto &expr = binding.ambiguous_binding.node->expr;
@@ -110,8 +110,22 @@ static struct Typer_Api {
         
         auto *known_type = known_types.find(id.value);
         if (known_type) {
-          binding = Binding(Type_Alias_Binding {
-            .binding = &(*known_type)->type_binding
+          fin_ensure((*known_type)->kind == Binding::Type);
+
+          /*
+            This would shortcut the alias chain to the actual type, which should be fine,
+            given that it's a constant binding?
+           */
+          auto known_type_binding = &(*known_type)->type_binding;
+          while (known_type_binding->binding_kind == Type_Binding::Alias) {
+            known_type_binding = known_type_binding->alias;
+          }
+
+          fin_ensure(known_type_binding->binding_kind != Type_Binding::Alias);
+
+          binding = Binding(Type_Binding {
+            .binding_kind = Type_Binding::Alias,
+            .alias        = known_type_binding,
           });
 
           return Fin::Ok();
@@ -122,10 +136,19 @@ static struct Typer_Api {
 
         auto &value_binding = *lookup_result.take();
         if (value_binding == Binding::Ambiguous) {
-            typecheck_ambiguous_as_type_alias(enclosing, value_binding);
+            typecheck_ambiguous_as_type(enclosing, value_binding);
         }
         
         return Typer_Error();
+      }
+      case Expression_Node::Star_Expr: {
+        auto &star      = expr.star_expr;
+        auto &type_expr = *star.expr;
+
+        
+        
+
+        break;
       }
       default: {
         INCOMPLETE;
@@ -166,12 +189,13 @@ static struct Typer_Api {
           }
 
           if (binding == Binding::Ambiguous) {
-            typecheck_ambiguous_as_type_alias(enclosing, binding);
-            fin_ensure(binding == Binding::Type_Alias);
+            fin_check(typecheck_ambiguous_as_type(enclosing, binding));
+            fin_ensure(binding == Binding::Type);
+            fin_ensure(binding.type_binding == Type_Binding::Alias);
 
             known_types.insert_copy(plain.name, &binding);
 
-            return Fin::Ok<const Type *>(binding.type_alias_binding.binding->type_value);
+            return Fin::Ok<const Type *>(binding.type_binding.alias->type_value);
           }
 
           return Typer_Error(); // Found value is not a type declaration
@@ -244,15 +268,53 @@ static struct Typer_Api {
             pointer and fully trust the engineer that this operation is valid.
            */
           if (expr_type->kind == Type::Pointer) return type;
+
+          if (expr_type->kind == Type::Built_In) {
+            if (expr_type->built_in_type == Built_In_Type::Void) {
+              // Attempt to cast void to void
+              if (type->built_in_type == Built_In_Type::Void) return type;
+
+              return Typer_Error(); // attempt to a void type into some other type
+            }
+
+            // Effectively discard the value?
+            if (type->built_in_type == Built_In_Type::Void) return type;
+
+            if (expr_type->built_in_type == Built_In_Type::String_Literal ||
+                type->built_in_type == Built_In_Type::String_Literal) {
+              /*
+                TODO:
+                  String literals are not implemented in the compiler at this point...
+               */
+              INCOMPLETE;
+            }
+
+            /*
+              If none of the above conditions are handled, we must be looking at some case of numerics, ints of floats.
+              I presume, we just return the latter and let the codegen handle the truncation or conversion?
+             */
+            return type;
+          }
         }
 
-        // More elabore casts checking should be here...
-        INCOMPLETE;
-
+        /*
+          As for structs, arrays and seqs, not sure that language cast should work for these types, it's unclear how to do
+          this kind of conversion here? Rather it should be something user-defined? How this could be integrated into the
+          casting I don't know yet.
+        */
+        return Typer_Error();
+      }
+      default: {
+        INCOMPLETE; // More commands to handle
         break;
       }
-      default: { INCOMPLETE; break; }
     }
+
+    /*
+      TODO:
+        If the above code doesn't cover things there must be something fundamentaly wrong with this.
+     */
+    return Typer_Error();
   }
 
   Result<Binding *> typecheck_struct (Scope &enclosing, Struct_Node &struct_decl) {
@@ -344,10 +406,6 @@ static struct Typer_Api {
 
     return value_type.flags.bit_mask <= storage_type.flags.bit_mask;  
   }
-
-  Result<Fin::List<Entry>> transform_expression (Expression_Node &node) {
-    
-  }
   
   Result<Entry> transform_statement (const Lambda_Binding &context, Statement_Node &node) {
     switch (node.stmnt_kind) {
@@ -386,17 +444,19 @@ static struct Typer_Api {
           }
         }
 
-        try(entries, transform_expression(return_expr));
-        fin_ensure(entries.last != nullptr);
+        INCOMPLETE; // I'm unclear about this code below, I should look more into this...
 
-        auto &last = entries.last->value;
-        switch (last.kind) {
-          case Entry::Load: return Entry(Return_Entry(Value(Memory_Value {
-            .mem_kind   = Memory_Value::Load,
-            .load_entry = static_cast<Load_Entry *>(&last.load_entry)
-          })));
-          default: return Typer_Error();
-        }
+        //try(entries, transform_expression(return_expr));
+        //fin_ensure(entries.last != nullptr);
+
+        // auto &last = entries.last->value;
+        // switch (last.kind) {
+        //   case Entry::Load: return Entry(Return_Entry(Value(Memory_Value {
+        //     .mem_kind   = Memory_Value::Load,
+        //     .load_entry = static_cast<Load_Entry *>(&last.load_entry)
+        //   })));
+        //   default: return Typer_Error();
+        // }
       }
     }
 
@@ -463,9 +523,10 @@ static struct Typer_Api {
     }
 
     try(expr_type, typecheck_expression(enclosing, expr));
-
-    INCOMPLETE;
-    return nullptr;
+    return new (global_arena) Binding(Value_Binding {
+      .type        = expr_type,
+      .is_constant = true  
+    });
   }
 } typer;
 

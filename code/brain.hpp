@@ -151,7 +151,6 @@ struct Entry {
 enum struct Binding_Kind {
   Value,
   Type,
-  Type_Alias,
   Lambda,
   Ambiguous,
 };
@@ -172,6 +171,10 @@ struct Value_Binding {
 struct Type_Binding {
   BINDING_KIND(Type);
 
+  enum Type_Binding_Kind: u8 { Built_In, Struct, Alias };
+
+  Type_Binding_Kind binding_kind;
+
   const Struct_Node *node;
   Scope scope = {};
 
@@ -179,15 +182,12 @@ struct Type_Binding {
     TODO: @arch
     Should the type be stored somewhere else?
    */
-  Type *type_value = nullptr;
+  union {
+    Type               *type_value;
+    const Type_Binding *alias;
+  };
 
-  bool is_built_in = false;
-};
-
-struct Type_Alias_Binding {
-  BINDING_KIND(Type_Alias);
-
-  const Type_Binding *binding;
+  GEN_KIND_CHECK(binding_kind);
 };
 
 struct Lambda_Binding {
@@ -215,7 +215,6 @@ struct Binding {
   union {
     Value_Binding      value_binding;
     Type_Binding       type_binding;
-    Type_Alias_Binding type_alias_binding;
     Lambda_Binding     lambda_binding;
     Ambiguous_Binding  ambiguous_binding;
   };

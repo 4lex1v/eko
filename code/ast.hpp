@@ -207,9 +207,15 @@ enum struct Declaration_Node_Kind: u8 {
 struct Constant_Node {
   DECL_KIND(Constant);
 
+  enum Constant_Node_Type: u8 { Expr, Type };
+
+  Constant_Node_Type constant_type;
   Token name;
 
-  Expression_Node expr;
+  union {
+    Expression_Node expr;  
+    Type_Node       type;
+  };
 };
 
 struct Variable_Node {

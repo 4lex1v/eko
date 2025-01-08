@@ -1,12 +1,15 @@
 
 DWORD  :: u32
-HANDLE :: *Any
+HANDLE :: *void
 TEST   :: DWORD
+
+BIG_ARRAY    :: [1024] u32
+JUST_TESTING :: *BIG_ARRAY[14]
 
 STD_OUTPUT_HANDLE :: -11 as DWORD
 
 GetStdHandle :: extern (std_handle: TEST) HANDLE
-WriteFile    :: extern (file: HANDLE, buffer: *Any, bytes_to_write: DWORD, bytes_written: *DWORD, overlapped: *Any = null) bool
+WriteFile    :: extern (file: HANDLE, buffer: *void, bytes_to_write: DWORD, bytes_written: *DWORD, overlapped: *void = null) bool
 
 main :: () s32 {
   message :: "Hello, World\n"
@@ -17,3 +20,4 @@ main :: () s32 {
   
   return 0 if status else 1
 }
+
